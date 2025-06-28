@@ -1,7 +1,9 @@
 # dataset.py
 import os
 import numpy as np
+from sklearn.model_selection import TimeSeriesSplit
 import torch
+import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from .config import DATA_DIR, SAVED_DATA_PATH, TRAIN_CONFIG
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
@@ -36,6 +38,9 @@ class IMUTrajectoryDataset(Dataset):
                             y_data[:, 0] = y_data[:, 0] * 24 * 200
                             y_data[:, 1] = y_data[:, 1] * 14 * 200
 
+                            # 平滑数据
+                            y_data = smooth_data(y_data)
+
                             # 归一化
                             x_mean = np.mean(x_data, axis=0)
                             x_std = np.std(x_data, axis=0)
@@ -66,7 +71,7 @@ class IMUTrajectoryDataset(Dataset):
     def _load_or_process_data(self, save_processed):
         if os.path.exists(SAVED_DATA_PATH):
             print("Loading preprocessed data...")
-            data = torch.load(SAVED_DATA_PATH)
+            data = torch.load(SAVED_DATA_PATH, weights_only=True)
             self.samples = data['samples']
         else:
             print("Processing raw data...")
@@ -83,7 +88,7 @@ class IMUTrajectoryDataset(Dataset):
 def collate_fn(batch):
     window_size = TRAIN_CONFIG["time_step"]
     stride = TRAIN_CONFIG["stride"]
-    max_windows = 5000  
+    max_windows = 2500  
     
     sample = batch[0]
     x_data = sample['x']
@@ -138,3 +143,90 @@ def collate_fn(batch):
         torch.LongTensor(lengths).contiguous(),
         torch.LongTensor(indices).contiguous()
     )
+
+def smooth_data(data):
+    """
+    分别平滑二维数据中每个维度的异常峰值
+    data: shape为(n, 2)的numpy数组
+    """
+    smooth_data = data.copy()
+    max_iterations = 50  # 最大迭代次数
+    window_size = 10  # 检查窗口大小
+    threshold_ratio = 1.5  # 异常值判断阈值
+    changes = []  # 记录每次迭代的修改
+    
+    for dim in range(2):
+        iteration = 0
+        while iteration < max_iterations:
+            iteration += 1
+            iteration_changes = 0
+            
+            # 计算移动平均和标准差
+            rolling_mean = np.convolve(smooth_data[:, dim], 
+                                     np.ones(window_size)/window_size, 
+                                     mode='valid')
+            rolling_std = np.array([np.std(smooth_data[i:i+window_size, dim]) 
+                                  for i in range(len(smooth_data)-window_size+1)])
+            
+            # 对每个点进行检查
+            for i in range(len(smooth_data)):
+                # 获取周围点的索引
+                start_idx = max(0, i - window_size//2)
+                end_idx = min(len(data), i + window_size//2 + 1)
+                
+                # 获取当前点和周围点的值
+                current_val = smooth_data[i, dim]
+                surrounding_vals = smooth_data[start_idx:end_idx, dim]
+                surrounding_vals = surrounding_vals[surrounding_vals != current_val]
+                
+                if len(surrounding_vals) > 0:
+                    local_mean = np.mean(surrounding_vals)
+                    local_std = np.std(surrounding_vals)
+                    if local_std == 0:
+                        local_std = np.std(smooth_data[:, dim])/10
+                    
+                    # 判断是否为异常值
+                    z_score = abs(current_val - local_mean) / (local_std + 1e-6)
+                    if z_score > threshold_ratio:
+                        # 使用周围点的均值进行修正
+                        new_val = local_mean + np.sign(current_val - local_mean) * local_std
+                        smooth_data[i, dim] = new_val
+                        iteration_changes += 1
+            
+            changes.append(iteration_changes)
+            # 如果没有更多修改或修改很少，退出循环
+            if iteration_changes == 0 or (iteration > 3 and iteration_changes < 3):
+                break
+    
+    # 仅在发生变化时绘图
+    if sum(changes) > 0:
+        os.makedirs('smooth_img', exist_ok=True)
+        plt.figure(figsize=(15, 8))
+        
+        # Plot dimension 1
+        plt.subplot(2, 2, 1)
+        plt.plot(data[:, 0], 'r-', label='Original', alpha=0.5)
+        plt.plot(smooth_data[:, 0], 'b-', label='Smoothed', alpha=0.5)
+        plt.title('Dimension 1')
+        plt.legend()
+        
+        # Plot dimension 2
+        plt.subplot(2, 2, 2)
+        plt.plot(data[:, 1], 'r-', label='Original', alpha=0.5)
+        plt.plot(smooth_data[:, 1], 'b-', label='Smoothed', alpha=0.5)
+        plt.title('Dimension 2')
+        plt.legend()
+        
+        # Plot changes per iteration
+        plt.subplot(2, 1, 2)
+        plt.plot(changes, 'g-', marker='o')
+        plt.title('Changes per Iteration')
+        plt.xlabel('Iteration')
+        plt.ylabel('Number of Changes')
+
+        plt.tight_layout()
+        plt.savefig(f'smooth_img/smooth_comparison_{np.random.randint(1000)}.png')
+        plt.close()
+
+    return smooth_data
+

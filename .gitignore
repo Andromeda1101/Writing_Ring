@@ -2,3 +2,12 @@
 /wandb/
 /trajectory_plots/
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.pkl.gz
+*.pth
+/*.pth
+/*.png
+smooth_img/

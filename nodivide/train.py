@@ -5,7 +5,8 @@ from .dataset import IMUTrajectoryDataset, collate_fn
 from .model import IMUToTrajectoryNet
 from .config import *
 from torch.utils.data import Subset
-import wandb
+# import wandb
+import swanlab as wandb
 from torch.utils.data import Dataset, DataLoader
 from .validate import validate
 
