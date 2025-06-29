@@ -1,7 +1,6 @@
 # config.py
 import torch
 
-# 硬件配置
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 DATA_DIR = "data/frame_standard_delete_g" 
 SAVED_DATA_PATH = "nodivide/processed_data.pth"     
@@ -25,5 +24,6 @@ TRAIN_CONFIG = {
     "min_delta": 1e-6,
     "batch_size": 4,
     "time_step": 25000,
-    "stride": 60
+    "stride": 60,
+    "warmup_steps": 5
 }

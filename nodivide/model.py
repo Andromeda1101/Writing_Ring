@@ -7,15 +7,15 @@ from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_se
 class IMUToTrajectoryNet(nn.Module):
     def __init__(self):
         super().__init__()
-        config = MODEL_CONFIG
+        self.config = MODEL_CONFIG
         self.gru = nn.GRU(
-            input_size=config["input_size"],
-            hidden_size=config["hidden_size"],
-            num_layers=config["num_layers"],
+            input_size=self.config["input_size"],
+            hidden_size=self.config["hidden_size"],
+            num_layers=self.config["num_layers"],
             batch_first=True,
-            dropout=config["dropout"]
+            dropout=self.config["dropout"]
         )
-        self.fc = nn.Linear(config["hidden_size"], config["output_size"])
+        self.fc = nn.Linear(self.config["hidden_size"], self.config["output_size"])
 
     def forward(self, x, lengths):
         try:
@@ -40,7 +40,7 @@ class IMUToTrajectoryNet(nn.Module):
             output, _ = pad_packed_sequence(packed_output, batch_first=True)
             output = output.contiguous()
             
-            # 使用全连接层
+            # 全连接层
             batch_size, seq_len, hidden_size = output.size()
             output = output.view(-1, hidden_size)
             output = self.fc(output)

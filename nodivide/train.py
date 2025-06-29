@@ -54,7 +54,7 @@ def train(model, dataloader, optimizer, device):
         sample_losses[sample_idx] += current_loss
         sample_valid_elements[sample_idx] += current_valid
         
-        # 计算当前批次的平均损失用于反向传播
+        # 计算当前批次的平均损失
         current_valid = masks.sum()
         if current_valid > 0:
             loss = masked_loss.sum() / current_valid
@@ -123,7 +123,7 @@ def train_model():
     # 创建数据加载器
     train_loader = DataLoader(
         train_dataset, 
-        batch_size=TRAIN_CONFIG["batch_size"],  # 每次只处理一个样本
+        batch_size=TRAIN_CONFIG["batch_size"], 
         shuffle=False,
         collate_fn=collate_fn,
         num_workers=0,
@@ -132,7 +132,7 @@ def train_model():
 
     val_loader = DataLoader(
         val_dataset,
-        batch_size=1,  # 每次只处理一个样本
+        batch_size=TRAIN_CONFIG["batch_size"],
         shuffle=False,
         collate_fn=collate_fn,
         num_workers=0,
@@ -141,7 +141,7 @@ def train_model():
 
     test_loader = DataLoader(
         test_dataset, 
-        batch_size=1,  # 每次只处理一个样本
+        batch_size=TRAIN_CONFIG["batch_size"], 
         shuffle=False,
         collate_fn=collate_fn,
         num_workers=0,
@@ -155,14 +155,33 @@ def train_model():
         weight_decay=TRAIN_CONFIG["weight_decay"]
     )
 
+    # 学习率调度器
+    warmup_steps = TRAIN_CONFIG["warmup_steps"]
+    total_steps = TRAIN_CONFIG["epochs"]
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer,
+        T_0=total_steps - warmup_steps,
+        T_mult=1,
+        eta_min=1e-6
+    )
+
     best_val_loss = float('inf')
-    patience = 10  # 早停耐心值
+    patience = TRAIN_CONFIG["patience"]
     patience_counter = 0
     min_delta = 1e-6  # 最小改善阈值
     
     for epoch in range(TRAIN_CONFIG["epochs"]):
         print("")
         print("Start Training epoch: ", epoch)
+        
+        # 学习率预热
+        if epoch < warmup_steps:
+            lr = TRAIN_CONFIG["lr"] * (epoch + 1) / warmup_steps
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = lr
+        else:
+            scheduler.step()
+            
         train_loss = train(model, train_loader, optimizer, DEVICE)
         val_loss = validate(model, val_loader, DEVICE, epoch=epoch, plot=True)
 
