@@ -79,27 +79,32 @@ def validate(model, dataloader, device, epoch=None, plot=True):
 def draw_trajectory_plots(samples_pred, samples_targ, epoch):
     plot_dir = 'trajectory_plots'
     os.makedirs(plot_dir, exist_ok=True)
-    window_size = TRAIN_CONFIG["window_size"]
+    window_size = TRAIN_CONFIG["time_step"]
     stride = TRAIN_CONFIG["stride"]
 
     for sample_idx, pred_windows in samples_pred.items():
         targ_windows = samples_targ[sample_idx]
         
         plt.figure(figsize=(20, 20))
-
-        # 绘制样本轨迹
         plt.subplot(2, 1, 1)
         plt.title(f'Sample {sample_idx} Trajectory (Epoch {epoch})')
+        
         pred_trajectory = []
         targ_trajectory = []
-        for window_idx in sorted(pred_windows.keys()):
+        window_indices = sorted(pred_windows.keys())
+        for window_idx in window_indices:
+            window_pred = pred_windows[window_idx]
+            window_targ = targ_windows[window_idx]
             if window_idx == 0:
-                pred_trajectory.append(pred_windows[window_idx][:window_size-stride, :])
-                targ_trajectory.append(targ_windows[window_idx][:window_size-stride, :])
+                pred_trajectory.extend(window_pred)
+                targ_trajectory.extend(window_targ)
             else:
-                pred_trajectory.append(pred_windows[window_idx])
-                targ_trajectory.append(targ_windows[window_idx])
-            
+                pred_trajectory.extend(window_pred[stride:])
+                targ_trajectory.extend(window_targ[stride:])
+        
+        pred_trajectory = np.array(pred_trajectory)
+        targ_trajectory = np.array(targ_trajectory)
+        
         plt.plot(pred_trajectory[:, 0], pred_trajectory[:, 1], 'r-', label='Predicted', alpha=0.5)
         plt.plot(targ_trajectory[:, 0], targ_trajectory[:, 1], 'b-', label='Ground Truth', alpha=0.5)
         
@@ -108,7 +113,7 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
         plt.axis('equal')
         plt.legend()
 
-        # 绘制X坐标随时间的变化
+        # Plot X coordinate over time
         plt.subplot(2, 2, 3)
         time_steps = np.arange(len(pred_trajectory))
         plt.plot(time_steps, pred_trajectory[:, 0], 'r-', label='Predicted', alpha=0.5)
@@ -117,7 +122,7 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
         plt.ylabel('X Position')
         plt.legend()
 
-        # 绘制Y坐标随时间的变化
+        # Plot Y coordinate over time
         plt.subplot(2, 2, 4)
         plt.plot(time_steps, pred_trajectory[:, 1], 'r-', label='Predicted', alpha=0.5)
         plt.plot(time_steps, targ_trajectory[:, 1], 'b-', label='Ground Truth', alpha=0.5)
@@ -125,5 +130,5 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
         plt.ylabel('Y Position')
         plt.legend()
 
-        plt.savefig(os.path.join(plot_dir, f'trajectory_sample_{sample_idx}_epoch_{epoch}.png'))
+        plt.savefig(os.path.join(plot_dir, f'trajectory_{sample_idx}_epoch_{epoch}.png'))
         plt.close()

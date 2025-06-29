@@ -16,9 +16,8 @@ def train(model, dataloader, optimizer, device):
     sample_valid_elements = {}  
     
     total_batches = len(dataloader)
-    # progress_interval = total_batches // 3
     
-    for batch_idx, (inputs, targets, masks, lengths, sample_indices) in enumerate(dataloader):
+    for batch_idx, (inputs, targets, masks, lengths, sample_indices, window_indices) in enumerate(dataloader):
         if batch_idx > 0 and batch_idx % 10 == 0:
             torch.cuda.empty_cache()
         
