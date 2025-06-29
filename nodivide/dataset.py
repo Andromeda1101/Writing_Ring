@@ -12,11 +12,12 @@ class IMUTrajectoryDataset(Dataset):
     def __init__(self, data_dir=DATA_DIR, save_processed=True):
         self.data_dir = data_dir
         self.samples = []
+        self.window_size = TRAIN_CONFIG["time_step"]
+        self.stride = TRAIN_CONFIG["stride"]
         self._load_or_process_data(save_processed)
 
     def _process_data(self):
-        sample_idx = 0  # 
-        
+        sample_idx = 0
         for name in os.listdir(self.data_dir):
             name_path = os.path.join(self.data_dir, name)
             for i in os.listdir(name_path):
@@ -29,7 +30,7 @@ class IMUTrajectoryDataset(Dataset):
                         y_path = os.path.join(i_path, y_file)
                         m_file = f'{j}_mask.npy'
                         m_path = os.path.join(i_path, m_file)
-                        if os.path.exists(y_path) & os.path.exists(m_path):
+                        if os.path.exists(y_path) and os.path.exists(m_path):
                             x_data = np.load(os.path.join(i_path, j_file))
                             y_data = np.load(y_path)
                             m_data = np.load(m_path)
@@ -47,25 +48,40 @@ class IMUTrajectoryDataset(Dataset):
                             x_std[x_std == 0] = 1  # 防止除零
                             x_data = (x_data - x_mean) / x_std
                             
-                            self.samples.append({
-                                'x': torch.FloatTensor(x_data).contiguous(),
-                                'y': torch.FloatTensor(y_data).contiguous(),
-                                'm': torch.FloatTensor(m_data).contiguous(),
-                                'length': len(x_data),
-                                'file_idx': sample_idx,  # 全局唯一索引
-                                # 'file_path': os.path.join(i_path, j_file)  # 保存文件路径
-                            })
+                            # 序列2张量
+                            x_tensor = torch.FloatTensor(x_data).contiguous()
+                            y_tensor = torch.FloatTensor(y_data).contiguous()
+                            m_tensor = torch.FloatTensor(m_data).contiguous()
+                            
+                            # 划分窗口
+                            seq_len = len(x_tensor)
+                            for start in range(0, seq_len - self.window_size + 1, self.stride):
+                                end = start + self.window_size
+                                
+                                window_x = x_tensor[start:end]
+                                window_y = y_tensor[start:end]
+                                window_m = m_tensor[start:end]
+                                
+                                self.samples.append({
+                                    'x': window_x,
+                                    'y': window_y,
+                                    'm': window_m,
+                                    'length': self.window_size,
+                                    'sample_idx': sample_idx,  # 样本ID
+                                    'window_idx': start // self.stride  # 窗口ID
+                                })
+                            
                             sample_idx += 1
         
-        print(f'Loaded {len(self.samples)} samples from {self.data_dir}')
+        # 打印统计信息
+        print(f'Loaded {len(self.samples)} windows from {self.data_dir}')
+        print(f'Window size: {self.window_size}, Stride: {self.stride}')
         
-        total_points = sum(sample['length'] for sample in self.samples)
-        print(f'Total data points: {total_points}')
-        print(f'Average points per sample: {total_points/len(self.samples):.2f}')
-
+        # 保存处理后的数据
         torch.save({
             'samples': self.samples,
-            'total_points': total_points
+            'window_size': self.window_size,
+            'stride': self.stride
         }, SAVED_DATA_PATH)
 
     def _load_or_process_data(self, save_processed):
@@ -86,92 +102,84 @@ class IMUTrajectoryDataset(Dataset):
         return self.samples[idx]
 
 def collate_fn(batch):
-    window_size = TRAIN_CONFIG["time_step"]
-    stride = TRAIN_CONFIG["stride"]
-    max_windows = 2500  
+    inputs = torch.stack([item['x'] for item in batch])
+    targets = torch.stack([item['y'] for item in batch])
+    masks = torch.stack([item['m'] for item in batch])
+    lengths = torch.tensor([item['length'] for item in batch])
+    sample_idx = torch.tensor([item['sample_idx'] for item in batch])
+    window_idx = torch.tensor([item['window_idx'] for item in batch])
     
-    sample = batch[0]
-    x_data = sample['x']
-    y_data = sample['y']
-    m_data = sample['m']
-    seq_len = sample['length']
-    file_idx = sample['file_idx']
-    
-    # 滑动窗口
-    start_positions = list(range(0, seq_len - window_size + 1, stride))
-    if not start_positions:
-        start_positions = [0]
-        current_window_size = seq_len
-    else:
-        current_window_size = window_size
-    
-    # 限制窗口数量
-    if len(start_positions) > max_windows:
-        start_positions = start_positions[:max_windows]
-
-
-    windows = []
-    targets = []
-    masks = []
-    lengths = []
-    indices = []
-    
-    for start in start_positions:
-        end = start + current_window_size
-        window = x_data[start:end]
-        target = y_data[start:end]
-        mask = m_data[start:end]
-        
-        if len(window) > 0:
-            windows.append(window)
-            targets.append(target)
-            masks.append(mask)
-            lengths.append(len(window))
-            indices.append(file_idx)
-    
-    if not windows:  
-        raise ValueError("No valid windows found in batch")
-    
-    # 打包
-    windows_padded = pad_sequence(windows, batch_first=True)
-    targets_padded = pad_sequence(targets, batch_first=True)
-    masks_padded = pad_sequence(masks, batch_first=True)
-    return (
-        windows_padded.contiguous(),
-        targets_padded.contiguous(),
-        masks_padded.contiguous(),
-        torch.LongTensor(lengths).contiguous(),
-        torch.LongTensor(indices).contiguous()
-    )
+    return inputs, targets, masks, lengths, sample_idx, window_idx
 
 def smooth_data(data):
     smooth_data = data.copy()
-    window_size = 100  # 窗口大小
+    slide = 5000
+    window_size = 10
+    inter_window_size = 4
     is_changed = False
     threshold = 0.5
-    
+    max_iter = 10
+
+    # for dim in range(2):
+    #     iter_count = 0
+    #     while iter_count < max_iter:
+    #         iter_count += 1
+    #         abs_data = np.abs(smooth_data[:, dim])
+    #         max_val = np.max(abs_data)
+    #         if max_val == 0:
+    #             continue
+    #         max_idx = np.argmax(abs_data)
+
+    #         start_idx = max(0, max_idx - window_size//2)
+    #         end_idx = min(len(smooth_data), max_idx + window_size//2 + 1)
+    #         surroundings_vals = np.abs(smooth_data[start_idx:end_idx, dim])
+    #         surroundings_vals[max_idx - start_idx] = 0  
+    #         max_surrounding_val = np.max(surroundings_vals)
+
+    #         if max_surrounding_val <= threshold * max_val:
+    #             is_changed = True
+    #             new_val = max_val * 0.6 * np.sign(smooth_data[max_idx, dim])
+    #             smooth_data[max_idx, dim] = new_val
+    #             print(f"Dim {dim}, Iter {iter_count}, Def Max Index: {max_idx}, Max Value: {max_val}, Surrounding Max: {max_surrounding_val}")
+    #         else:
+    #             break
+
     for dim in range(2):
-        while True:
-            abs_data = np.abs(smooth_data[:, dim])
-            max_val = np.max(abs_data)
-            max_idx = np.argmax(abs_data)
+        iter_count = 0
+        while iter_count < max_iter:
+            iter_count += 1
+            iter_changed = False
+            for start in range(0, len(smooth_data), slide):
+                end = min(start + slide, len(smooth_data))
+                abs_data = np.abs(smooth_data[start:end, dim])
+                max_val = np.max(abs_data)
+                if max_val == 0:
+                    continue
+                max_idx = np.argmax(abs_data)
+                def_max_idx = max_idx + start
 
-            start_idx = max(0, max_idx - window_size//2)
-            end_idx = min(len(abs_data), max_idx + window_size//2 + 1)
-            surroundings_vals = abs_data[start_idx:end_idx]
-            surroundings_vals[max_idx - start_idx] = 0  
-            max_surrounding_val = np.max(surroundings_vals)
+                start_idx = max(0, def_max_idx - window_size//2)
+                inter_start_idx = max(0, def_max_idx - inter_window_size//2)
+                inter_end_idx = min(len(smooth_data), def_max_idx + inter_window_size//2 + 1)
+                end_idx = min(len(smooth_data), def_max_idx + window_size//2 + 1)
+                surroundings_vals_before = np.abs(smooth_data[start_idx:inter_start_idx, dim])
+                surroundings_vals_after = np.abs(smooth_data[inter_end_idx:end_idx, dim])
+                surroundings_vals = np.concatenate([surroundings_vals_before, surroundings_vals_after])
+                max_surrounding_val = np.max(surroundings_vals)
 
-            if max_surrounding_val <= threshold * max_val:
-                is_changed = True
-                smooth_data[max_idx, dim] = max_val * 0.6 * np.sign(smooth_data[max_idx, dim])
-            else:
+                if max_surrounding_val <= threshold * max_val:
+                    is_changed = True
+                    iter_changed = True
+                    print(f"Dim {dim}, Iter {iter_count}, Def Max Index: {def_max_idx}, Max Value: {max_val}, Surrounding Max: {max_surrounding_val}")
+                    inter_vals = smooth_data[inter_start_idx:inter_end_idx, dim]
+                    smooth_data[inter_start_idx:inter_end_idx, dim] = inter_vals * 0.6
+
+            if iter_changed is False:
                 break
 
     if is_changed is True:
-
         os.makedirs('smooth_img', exist_ok=True)
-        plt.figure(figsize=(15, 8))
+        plt.figure(figsize=(15, 15))
         
         # 1
         plt.subplot(2, 2, 1)
@@ -188,7 +196,7 @@ def smooth_data(data):
         plt.legend()
 
         # img
-        plt.subplot(2, 2, 3)
+        plt.subplot(2, 1, 2)
         orig_points = speed2point(data)
         smooth_points = speed2point(smooth_data)
         plt.plot(orig_points[:, 0], orig_points[:, 1], 'r-', label='Original', alpha=0.5)
@@ -198,7 +206,9 @@ def smooth_data(data):
         plt.legend()
 
         plt.tight_layout()
-        plt.savefig(f'smooth_img/smooth_comparison_{np.random.randint(1000)}.png')
+        random_suffix = np.random.randint(1000)
+        print(f"Saving smoothed comparison plot with suffix {random_suffix}")
+        plt.savefig(f'smooth_img/smooth_comparison_{random_suffix}.png')
         plt.close()
 
     return smooth_data

@@ -36,23 +36,22 @@ def train(model, dataloader, optimizer, device):
         
         # 计算每个窗口的损失
         loss_per_element = (outputs - targets) ** 2
-        # 只计算mask为1的部分的loss
-        valid_loss = loss_per_element[masks > 0]
-        masked_loss = valid_loss if len(valid_loss) > 0 else torch.tensor([0.0]).to(device)
+        masked_loss = loss_per_element * masks
         
-        # 获取索引
-        sample_idx = sample_indices[0].item()
-        
-        # 累积损失
-        if sample_idx not in sample_losses:
-            sample_losses[sample_idx] = 0
-            sample_valid_elements[sample_idx] = 0
-        
-        current_loss = masked_loss.sum().item()
-        current_valid = masks.sum().item()
-        
-        sample_losses[sample_idx] += current_loss
-        sample_valid_elements[sample_idx] += current_valid
+        batch_size = inputs.size(0)
+        for i in range(batch_size):
+            sample_idx = sample_indices[i].item()  
+            
+            if sample_idx not in sample_losses:
+                sample_losses[sample_idx] = 0
+                sample_valid_elements[sample_idx] = 0
+            
+            # 计算当前样本的损失
+            sample_loss = masked_loss[i][masks[i] > 0].sum().item()
+            valid_elements = masks[i].sum().item()
+            
+            sample_losses[sample_idx] += sample_loss
+            sample_valid_elements[sample_idx] += valid_elements
         
         # 计算当前批次的平均损失
         current_valid = masks.sum()

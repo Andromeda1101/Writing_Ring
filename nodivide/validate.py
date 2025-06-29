@@ -1,29 +1,27 @@
 import os
 from matplotlib.pyplot import plot
 import torch
-from .dataset import IMUTrajectoryDataset, collate_fn
+from .dataset import IMUTrajectoryDataset, collate_fn, speed2point
 from .model import IMUToTrajectoryNet
 from .config import *
 import numpy as np
 import swanlab as wandb
 import matplotlib.pyplot as plt
 
-def validate(model, dataloader, device, epoch=None, plot=False):
+
+def validate(model, dataloader, device, epoch=None, plot=True):
     if model is None:
         model = IMUToTrajectoryNet()
         model.load_state_dict(torch.load(MODEL_SAVE_PATH))
         model.to(DEVICE)
     model.eval()
-    file_losses = {}
-    file_valid_elements = {}
-    
-    # 创建图表目录
-    if plot:
-        plot_dir = 'trajectory_plots'
-        os.makedirs(plot_dir, exist_ok=True)
+    sample_losses = {}
+    sample_valid_elements = {}
+    samples_pred = {}
+    samples_targ = {}
     
     with torch.no_grad():
-        for batch_idx, (inputs, targets, masks, lengths, file_indices) in enumerate(dataloader):
+        for batch_idx, (inputs, targets, masks, lengths, sample_indices, window_indices) in enumerate(dataloader):
             inputs = inputs.contiguous().to(DEVICE)
             targets = targets.contiguous().to(DEVICE)
             masks = masks.contiguous().to(DEVICE)
@@ -31,84 +29,101 @@ def validate(model, dataloader, device, epoch=None, plot=False):
             
             outputs = model(inputs, lengths)
             
-            # 确保维度匹配
             targets = targets[:, :outputs.shape[1], :].contiguous()
             masks = masks[:, :outputs.shape[1]].contiguous()
             masks = masks.unsqueeze(-1).expand(-1, -1, 2).contiguous()
             
-            # 计算每个窗口的损失
             loss_per_element = (outputs - targets) ** 2
             masked_loss = loss_per_element * masks
             
-            file_idx = file_indices[0].item()
-            if file_idx not in file_losses:
-                file_losses[file_idx] = 0
-                file_valid_elements[file_idx] = 0
-            
-            current_loss = masked_loss.sum().item()
-            current_valid = masks.sum().item()
-            
-            file_losses[file_idx] += current_loss
-            file_valid_elements[file_idx] += current_valid
+            batch_size = inputs.size(0)
+            for i in range(batch_size):
+                sample_idx = sample_indices[i].item() 
+                
+                if sample_idx not in sample_losses:
+                    sample_losses[sample_idx] = 0
+                    sample_valid_elements[sample_idx] = 0
+                
+                # 计算当前样本的损失
+                sample_loss = masked_loss[i][masks[i] > 0].sum().item()
+                valid_elements = masks[i].sum().item()
+                
+                sample_losses[sample_idx] += sample_loss
+                sample_valid_elements[sample_idx] += valid_elements
 
-            # 绘制轨迹对比图
-            if plot and batch_idx < 5:  # 只绘制前5个样本
-                # 将数据移到CPU并转换为numpy数组
-                pred_trajectory = outputs[0].cpu().numpy()
-                true_trajectory = targets[0].cpu().numpy()
-                mask = masks[0, :, 0].cpu().numpy()  # 只需要一个通道的mask
-
-                # 获取有效的轨迹点（根据mask）
-                valid_indices = mask > 0
-                pred_valid = pred_trajectory[valid_indices]
-                true_valid = true_trajectory[valid_indices]
-                
-                # 创建时间数组
-                time_valid = np.arange(len(pred_valid))
-
-                # 创建两个子图
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
-                
-                # 绘制X坐标随时间的变化
-                ax1.plot(time_valid, pred_valid[:, 0], 'r-', label='Predicted', linewidth=2)
-                ax1.plot(time_valid, true_valid[:, 0], 'b-', label='Ground Truth', linewidth=2)
-                ax1.set_title('X Coordinate over Time')
-                ax1.set_xlabel('Time Step')
-                ax1.set_ylabel('X Position')
-                ax1.legend()
-                ax1.grid(True)
-                
-                # 绘制Y坐标随时间的变化
-                ax2.plot(time_valid, pred_valid[:, 1], 'r-', label='Predicted', linewidth=2)
-                ax2.plot(time_valid, true_valid[:, 1], 'b-', label='Ground Truth', linewidth=2)
-                ax2.set_title('Y Coordinate over Time')
-                ax2.set_xlabel('Time Step')
-                ax2.set_ylabel('Y Position')
-                ax2.legend()
-                ax2.grid(True)
-                
-                # 调整子图之间的间距
-                plt.tight_layout()
-                
-                # 保存图片
-                epoch_str = f'_epoch_{epoch}' if epoch is not None else ''
-                plt.savefig(os.path.join(plot_dir, f'trajectory_{batch_idx}{epoch_str}.png'))
-                plt.close()
+                # 保存预测和目标轨迹
+                if sample_idx not in samples_pred:
+                    samples_pred[sample_idx] = {}
+                    samples_targ[sample_idx] = {}
+                samples_pred[sample_idx][window_indices[i].item()] = outputs[i].cpu().numpy()
+                samples_targ[sample_idx][window_indices[i].item()] = targets[i].cpu().numpy()
     
-    # 返回所有文件的平均损失
-    total_loss = sum(file_losses.values())
-    total_valid = sum(file_valid_elements.values())
+    # 所有样本的平均损失
+    total_loss = sum(sample_losses.values())
+    total_valid = sum(sample_valid_elements.values())
     avg_loss = total_loss / total_valid if total_valid > 0 else float('inf')
     wandb.log({"val_loss": avg_loss})
     
-    # 如果绘制了轨迹图，上传到wandb
     if plot and epoch is not None:
-        for batch_idx in range(min(5, len(dataloader))):
+        draw_trajectory_plots(samples_pred, samples_targ, epoch)
+        for sample_idx in range(len(samples_pred)):
             try:
-                img_path = os.path.join('trajectory_plots', f'trajectory_{batch_idx}_epoch_{epoch}.png')
+                img_path = os.path.join('trajectory_plots', f'trajectory_{sample_idx}_epoch_{epoch}.png')
                 if os.path.exists(img_path):
-                    wandb.log({f"trajectory_plot_{batch_idx}": wandb.Image(img_path)})
+                    wandb.log({f"trajectory_plot_{sample_idx}": wandb.Image(img_path)})
             except Exception as e:
                 print(f"Error logging trajectory plot: {e}")
     
     return avg_loss
+
+def draw_trajectory_plots(samples_pred, samples_targ, epoch):
+    plot_dir = 'trajectory_plots'
+    os.makedirs(plot_dir, exist_ok=True)
+    window_size = TRAIN_CONFIG["window_size"]
+    stride = TRAIN_CONFIG["stride"]
+
+    for sample_idx, pred_windows in samples_pred.items():
+        targ_windows = samples_targ[sample_idx]
+        
+        plt.figure(figsize=(20, 20))
+
+        # 绘制样本轨迹
+        plt.subplot(2, 1, 1)
+        plt.title(f'Sample {sample_idx} Trajectory (Epoch {epoch})')
+        pred_trajectory = []
+        targ_trajectory = []
+        for window_idx in sorted(pred_windows.keys()):
+            if window_idx == 0:
+                pred_trajectory.append(pred_windows[window_idx][:window_size-stride, :])
+                targ_trajectory.append(targ_windows[window_idx][:window_size-stride, :])
+            else:
+                pred_trajectory.append(pred_windows[window_idx])
+                targ_trajectory.append(targ_windows[window_idx])
+            
+        plt.plot(pred_trajectory[:, 0], pred_trajectory[:, 1], 'r-', label='Predicted', alpha=0.5)
+        plt.plot(targ_trajectory[:, 0], targ_trajectory[:, 1], 'b-', label='Ground Truth', alpha=0.5)
+        
+        plt.xlabel('X Position')
+        plt.ylabel('Y Position')
+        plt.axis('equal')
+        plt.legend()
+
+        # 绘制X坐标随时间的变化
+        plt.subplot(2, 2, 3)
+        time_steps = np.arange(len(pred_trajectory))
+        plt.plot(time_steps, pred_trajectory[:, 0], 'r-', label='Predicted', alpha=0.5)
+        plt.plot(time_steps, targ_trajectory[:, 0], 'b-', label='Ground Truth', alpha=0.5)
+        plt.xlabel('Time Step')
+        plt.ylabel('X Position')
+        plt.legend()
+
+        # 绘制Y坐标随时间的变化
+        plt.subplot(2, 2, 4)
+        plt.plot(time_steps, pred_trajectory[:, 1], 'r-', label='Predicted', alpha=0.5)
+        plt.plot(time_steps, targ_trajectory[:, 1], 'b-', label='Ground Truth', alpha=0.5)
+        plt.xlabel('Time Step')
+        plt.ylabel('Y Position')
+        plt.legend()
+
+        plt.savefig(os.path.join(plot_dir, f'trajectory_sample_{sample_idx}_epoch_{epoch}.png'))
+        plt.close()

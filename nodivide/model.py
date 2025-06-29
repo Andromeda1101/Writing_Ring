@@ -8,6 +8,10 @@ class IMUToTrajectoryNet(nn.Module):
     def __init__(self):
         super().__init__()
         self.config = MODEL_CONFIG
+        
+        # 批量归一化
+        self.input_bn = nn.BatchNorm1d(self.config["input_size"])
+        
         self.gru = nn.GRU(
             input_size=self.config["input_size"],
             hidden_size=self.config["hidden_size"],
@@ -15,7 +19,17 @@ class IMUToTrajectoryNet(nn.Module):
             batch_first=True,
             dropout=self.config["dropout"]
         )
-        self.fc = nn.Linear(self.config["hidden_size"], self.config["output_size"])
+        
+        # 注意力层
+        self.attention = nn.Sequential(
+            nn.Linear(self.config["hidden_size"], 1),
+            nn.Softmax(dim=1)
+        )
+        
+        self.fc = nn.Sequential(
+            nn.Linear(self.config["hidden_size"], self.config["output_size"]),
+            nn.ReLU()
+        )
 
     def forward(self, x, lengths):
         try:
@@ -25,6 +39,14 @@ class IMUToTrajectoryNet(nn.Module):
             x = x.contiguous()
             lengths = lengths.cpu().contiguous()
             
+            # 批量归一化
+            batch_size, seq_len, features = x.size()
+            x = x.view(-1, features)
+            x = self.input_bn(x)
+            x = x.view(batch_size, seq_len, features)
+            
+            x = pad_sequence(x, batch_first=True, padding_value=0.0)
+
             # 打包
             packed_input = pack_padded_sequence(
                 x, 
@@ -39,6 +61,10 @@ class IMUToTrajectoryNet(nn.Module):
             # 解包
             output, _ = pad_packed_sequence(packed_output, batch_first=True)
             output = output.contiguous()
+            
+            # 注意力
+            attention_weights = self.attention(output)
+            output = output * attention_weights
             
             # 全连接层
             batch_size, seq_len, hidden_size = output.size()
