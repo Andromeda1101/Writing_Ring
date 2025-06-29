@@ -5,7 +5,7 @@ from .dataset import IMUTrajectoryDataset, collate_fn
 from .model import IMUToTrajectoryNet
 from .config import *
 import numpy as np
-import wandb
+import swanlab as wandb
 import matplotlib.pyplot as plt
 
 def validate(model, dataloader, device, epoch=None, plot=False):

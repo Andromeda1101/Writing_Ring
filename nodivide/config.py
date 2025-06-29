@@ -23,7 +23,7 @@ TRAIN_CONFIG = {
     "patience": 10,
     "min_delta": 1e-6,
     "batch_size": 4,
-    "time_step": 25000,
+    "time_step": 5000,
     "stride": 60,
     "warmup_steps": 5
 }
