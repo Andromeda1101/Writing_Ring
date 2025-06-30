@@ -9,9 +9,6 @@ class IMUToTrajectoryNet(nn.Module):
         super().__init__()
         self.config = MODEL_CONFIG
         
-        # 批量归一化
-        self.input_bn = nn.BatchNorm1d(self.config["input_size"])
-        
         self.gru = nn.GRU(
             input_size=self.config["input_size"],
             hidden_size=self.config["hidden_size"],
@@ -26,10 +23,8 @@ class IMUToTrajectoryNet(nn.Module):
             nn.Softmax(dim=1)
         )
         
-        self.fc = nn.Sequential(
-            nn.Linear(self.config["hidden_size"], self.config["output_size"]),
-            nn.ReLU()
-        )
+        # 全连接层
+        self.fc = nn.Linear(self.config["hidden_size"], self.config["output_size"])
 
     def forward(self, x, lengths):
         try:
@@ -38,12 +33,6 @@ class IMUToTrajectoryNet(nn.Module):
             
             x = x.contiguous()
             lengths = lengths.cpu().contiguous()
-            
-            # 批量归一化
-            batch_size, seq_len, features = x.size()
-            x = x.view(-1, features)
-            x = self.input_bn(x)
-            x = x.view(batch_size, seq_len, features)
             
             x = pad_sequence(x, batch_first=True, padding_value=0.0)
 
@@ -64,10 +53,12 @@ class IMUToTrajectoryNet(nn.Module):
             
             # 注意力
             attention_weights = self.attention(output)
-            output = output * attention_weights
+            weighted_output = torch.sum(output * attention_weights, dim=1)
+            weighted_output = weighted_output.unsqueeze(1).repeat(1, output.size(1), 1)
             
             # 全连接层
             batch_size, seq_len, hidden_size = output.size()
+            output = output + weighted_output  # 残差连接
             output = output.view(-1, hidden_size)
             output = self.fc(output)
             output = output.view(batch_size, seq_len, -1)

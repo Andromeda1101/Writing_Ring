@@ -83,52 +83,42 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
     stride = TRAIN_CONFIG["stride"]
 
     for sample_idx, pred_windows in samples_pred.items():
+        sample_dir = os.path.join(plot_dir, f'sample_{sample_idx}')
+        os.makedirs(sample_dir, exist_ok=True)
         targ_windows = samples_targ[sample_idx]
-        
-        plt.figure(figsize=(20, 20))
-        plt.subplot(2, 1, 1)
-        plt.title(f'Sample {sample_idx} Trajectory (Epoch {epoch})')
-        
+
         pred_trajectory = []
         targ_trajectory = []
         window_indices = sorted(pred_windows.keys())
         for window_idx in window_indices:
+            plt.figure(figsize=(20, 20))
+            plt.subplot(2, 1, 1)
+            plt.title(f'Sample {sample_idx} Trajectory (Epoch {epoch}, Window {window_idx})')
             window_pred = pred_windows[window_idx]
             window_targ = targ_windows[window_idx]
-            if window_idx == 0:
-                pred_trajectory.extend(window_pred)
-                targ_trajectory.extend(window_targ)
-            else:
-                pred_trajectory.extend(window_pred[stride:])
-                targ_trajectory.extend(window_targ[stride:])
-        
-        pred_trajectory = np.array(pred_trajectory)
-        targ_trajectory = np.array(targ_trajectory)
-        
-        plt.plot(pred_trajectory[:, 0], pred_trajectory[:, 1], 'r-', label='Predicted', alpha=0.5)
-        plt.plot(targ_trajectory[:, 0], targ_trajectory[:, 1], 'b-', label='Ground Truth', alpha=0.5)
-        
-        plt.xlabel('X Position')
-        plt.ylabel('Y Position')
-        plt.axis('equal')
-        plt.legend()
+            window_pred_traj = speed2point(window_pred)
+            window_targ_traj = speed2point(window_targ)
+            plt.plot(window_pred_traj[:, 0], window_pred_traj[:, 1], 'r-', label='Predicted', alpha=0.5)
+            plt.plot(window_targ_traj[:, 0], window_targ_traj[:, 1], 'b-', label='Ground Truth', alpha=0.5)
+            plt.xlabel('X Position')
+            plt.ylabel('Y Position')
+            plt.axis('equal')
+            plt.legend()
 
-        # Plot X coordinate over time
-        plt.subplot(2, 2, 3)
-        time_steps = np.arange(len(pred_trajectory))
-        plt.plot(time_steps, pred_trajectory[:, 0], 'r-', label='Predicted', alpha=0.5)
-        plt.plot(time_steps, targ_trajectory[:, 0], 'b-', label='Ground Truth', alpha=0.5)
-        plt.xlabel('Time Step')
-        plt.ylabel('X Position')
-        plt.legend()
+            plt.subplot(2, 2, 3)
+            time_steps = np.arange(window_size)
+            plt.plot(time_steps, window_pred[:, 0], 'r-', label='Predicted', alpha=0.5)
+            plt.plot(time_steps, window_targ[:, 0], 'b-', label='Ground Truth', alpha=0.5)
+            plt.xlabel('Time Step')
+            plt.ylabel('X')
+            plt.legend()
 
-        # Plot Y coordinate over time
-        plt.subplot(2, 2, 4)
-        plt.plot(time_steps, pred_trajectory[:, 1], 'r-', label='Predicted', alpha=0.5)
-        plt.plot(time_steps, targ_trajectory[:, 1], 'b-', label='Ground Truth', alpha=0.5)
-        plt.xlabel('Time Step')
-        plt.ylabel('Y Position')
-        plt.legend()
+            plt.subplot(2, 2, 4)
+            plt.plot(time_steps, window_pred[:, 1], 'r-', label='Predicted', alpha=0.5)
+            plt.plot(time_steps, window_targ[:, 1], 'b-', label='Ground Truth', alpha=0.5)
+            plt.xlabel('Time Step') 
+            plt.ylabel('Y')
+            plt.legend()
 
-        plt.savefig(os.path.join(plot_dir, f'trajectory_{sample_idx}_epoch_{epoch}.png'))
-        plt.close()
+            plt.savefig(os.path.join(sample_dir, f'window_{window_idx}_epoch_{epoch}.png'))
+            plt.close()
