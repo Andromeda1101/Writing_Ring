@@ -55,8 +55,8 @@ def validate(model, dataloader, device, epoch=None, plot=True):
                 if sample_idx not in samples_pred:
                     samples_pred[sample_idx] = {}
                     samples_targ[sample_idx] = {}
-                samples_pred[sample_idx][window_indices[i].item()] = outputs[i].cpu().numpy()
-                samples_targ[sample_idx][window_indices[i].item()] = targets[i].cpu().numpy()
+                samples_pred[sample_idx][window_indices[i].item()] = (outputs[i]*masks[i]).cpu().numpy()
+                samples_targ[sample_idx][window_indices[i].item()] = (targets[i]*masks[i]).cpu().numpy()
     
     # 所有样本的平均损失
     total_loss = sum(sample_losses.values())
@@ -87,12 +87,10 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
         os.makedirs(sample_dir, exist_ok=True)
         targ_windows = samples_targ[sample_idx]
 
-        pred_trajectory = []
-        targ_trajectory = []
         window_indices = sorted(pred_windows.keys())
         for window_idx in window_indices:
-            plt.figure(figsize=(20, 20))
-            plt.subplot(2, 1, 1)
+            plt.figure(figsize=(100, 60))
+            plt.subplot(3, 1, 1)
             plt.title(f'Sample {sample_idx} Trajectory (Epoch {epoch}, Window {window_idx})')
             window_pred = pred_windows[window_idx]
             window_targ = targ_windows[window_idx]
@@ -105,7 +103,7 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
             plt.axis('equal')
             plt.legend()
 
-            plt.subplot(2, 2, 3)
+            plt.subplot(3, 1, 2)
             time_steps = np.arange(window_size)
             plt.plot(time_steps, window_pred[:, 0], 'r-', label='Predicted', alpha=0.5)
             plt.plot(time_steps, window_targ[:, 0], 'b-', label='Ground Truth', alpha=0.5)
@@ -113,12 +111,13 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
             plt.ylabel('X')
             plt.legend()
 
-            plt.subplot(2, 2, 4)
+            plt.subplot(3, 1, 3)
             plt.plot(time_steps, window_pred[:, 1], 'r-', label='Predicted', alpha=0.5)
             plt.plot(time_steps, window_targ[:, 1], 'b-', label='Ground Truth', alpha=0.5)
             plt.xlabel('Time Step') 
             plt.ylabel('Y')
             plt.legend()
 
+            plt.tight_layout()
             plt.savefig(os.path.join(sample_dir, f'window_{window_idx}_epoch_{epoch}.png'))
             plt.close()
