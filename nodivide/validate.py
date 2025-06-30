@@ -67,12 +67,14 @@ def validate(model, dataloader, device, epoch=None, plot=True):
     if plot and epoch is not None:
         draw_trajectory_plots(samples_pred, samples_targ, epoch)
         for sample_idx in range(len(samples_pred)):
-            try:
-                img_path = os.path.join('trajectory_plots', f'trajectory_{sample_idx}_epoch_{epoch}.png')
-                if os.path.exists(img_path):
-                    wandb.log({f"trajectory_plot_{sample_idx}": wandb.Image(img_path)})
-            except Exception as e:
-                print(f"Error logging trajectory plot: {e}")
+            window_indices = sorted(samples_pred[sample_idx].keys())
+            for window_idx in window_indices:
+                try:
+                    img_path = os.path.join('trajectory_plots',f'sample_{sample_idx}', f'window_{window_idx}_epoch_{epoch}.png')
+                    if os.path.exists(img_path):
+                        wandb.log({f"trajectory_plot_{sample_idx}_{window_idx}": wandb.Image(img_path)})
+                except Exception as e:
+                    print(f"Error logging trajectory plot: {e}")
     
     return avg_loss
 
