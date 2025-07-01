@@ -1,6 +1,7 @@
 import os
 from matplotlib.pyplot import plot
 import torch
+import torch.nn.functional as F
 from .dataset import IMUTrajectoryDataset, collate_fn, speed2point
 from .model import IMUToTrajectoryNet
 from .config import *
@@ -8,6 +9,17 @@ import numpy as np
 import swanlab as wandb
 import matplotlib.pyplot as plt
 
+
+def trajectory_loss(outputs, targets, masks, alpha=0.8):
+    mse = ((outputs - targets) ** 2) * masks
+    mse_loss = mse.sum() / masks.sum()
+    outputs_masked = outputs * masks
+    targets_masked = targets * masks
+    outputs_flat = outputs_masked.view(outputs_masked.size(0), -1)
+    targets_flat = targets_masked.view(targets_masked.size(0), -1)
+    cos_sim = F.cosine_similarity(outputs_flat, targets_flat, dim=1)
+    cos_loss = 1 - cos_sim.mean()
+    return alpha * mse_loss + (1 - alpha) * cos_loss
 
 def validate(model, dataloader, device, epoch=None, plot=True):
     if model is None:
@@ -19,45 +31,33 @@ def validate(model, dataloader, device, epoch=None, plot=True):
     sample_valid_elements = {}
     samples_pred = {}
     samples_targ = {}
-    
     with torch.no_grad():
         for batch_idx, (inputs, targets, masks, lengths, sample_indices, window_indices) in enumerate(dataloader):
             inputs = inputs.contiguous().to(DEVICE)
             targets = targets.contiguous().to(DEVICE)
             masks = masks.contiguous().to(DEVICE)
             lengths = lengths.contiguous().to(DEVICE)
-            
             outputs = model(inputs, lengths)
-            
             targets = targets[:, :outputs.shape[1], :].contiguous()
             masks = masks[:, :outputs.shape[1]].contiguous()
             masks = masks.unsqueeze(-1).expand(-1, -1, 2).contiguous()
-            
-            loss_per_element = (outputs - targets) ** 2
-            masked_loss = loss_per_element * masks
-            
+            # 损失函数替换为混合损失
+            loss = trajectory_loss(outputs, targets, masks)
             batch_size = inputs.size(0)
             for i in range(batch_size):
                 sample_idx = sample_indices[i].item() 
-                
                 if sample_idx not in sample_losses:
                     sample_losses[sample_idx] = 0
                     sample_valid_elements[sample_idx] = 0
-                
-                # 计算当前样本的损失
-                sample_loss = masked_loss[i][masks[i] > 0].sum().item()
+                sample_loss = ((outputs[i] - targets[i]) ** 2 * masks[i]).sum().item()
                 valid_elements = masks[i].sum().item()
-                
                 sample_losses[sample_idx] += sample_loss
                 sample_valid_elements[sample_idx] += valid_elements
-
-                # 保存预测和目标轨迹
                 if sample_idx not in samples_pred:
                     samples_pred[sample_idx] = {}
                     samples_targ[sample_idx] = {}
                 samples_pred[sample_idx][window_indices[i].item()] = (outputs[i]*masks[i]).cpu().numpy()
                 samples_targ[sample_idx][window_indices[i].item()] = (targets[i]*masks[i]).cpu().numpy()
-    
     # 所有样本的平均损失
     total_loss = sum(sample_losses.values())
     total_valid = sum(sample_valid_elements.values())
@@ -66,8 +66,8 @@ def validate(model, dataloader, device, epoch=None, plot=True):
     
     if plot and epoch is not None:
         draw_trajectory_plots(samples_pred, samples_targ, epoch)
-        for sample_idx in range(len(samples_pred)):
-            window_indices = sorted(samples_pred[sample_idx].keys())
+        for sample_idx, pred_windows in samples_pred.items():
+            window_indices = sorted(pred_windows.keys())
             for window_idx in window_indices:
                 try:
                     img_path = os.path.join('trajectory_plots',f'sample_{sample_idx}', f'window_{window_idx}_epoch_{epoch}.png')
