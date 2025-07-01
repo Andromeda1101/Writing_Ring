@@ -5,6 +5,7 @@ DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 DATA_DIR = "data/frame_standard_delete_g" 
 SAVED_DATA_PATH = "nodivide/processed_data.pth"     
 MODEL_SAVE_PATH = "nodivide/best_model.pth"    
+DATA_LENGTH = 15000
 
 # 模型参数
 MODEL_CONFIG = {
@@ -12,18 +13,23 @@ MODEL_CONFIG = {
     "hidden_size": 128,  
     "num_layers": 3,    
     "output_size": 2,
+    "kernel_size_conv": (200 + 1, 2 + 1),
+    "kernel_size_pool": (200 + 1, 1),
+    "padding_conv": (100, 1),
+    "padding_pool": (100, 0),
+    "length": DATA_LENGTH,
     "dropout": 0.2     
 }
 
 # 训练参数
 TRAIN_CONFIG = {
-    "epochs": 200,
+    "epochs": 300,
     "lr": 0.0005,      
     "weight_decay": 1e-4,  
-    "patience": 15,
+    "patience": 10,
     "min_delta": 1e-6,
     "batch_size": 32,   
-    "time_step": 15000,
+    "time_step": DATA_LENGTH,
     "stride": 10000,
     "warmup_steps": 10
 }

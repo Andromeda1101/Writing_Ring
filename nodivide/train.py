@@ -1,7 +1,7 @@
 # train.py
 from sklearn.model_selection import TimeSeriesSplit
 import torch
-from .dataset import IMUTrajectoryDataset, collate_fn
+from .dataset import IMUTrajectoryDataset, collate_fn, speed2point
 from .model import IMUToTrajectoryNet
 from .config import *
 from torch.utils.data import Subset
@@ -10,6 +10,9 @@ import swanlab as wandb
 from torch.utils.data import Dataset, DataLoader
 from .validate import validate
 
+def traj_dist(outputs, targets):
+    return speed2point(outputs.detach().numpy()) - speed2point(targets.detach().numpy())
+
 def train(model, dataloader, optimizer, device):
     model.train()
     sample_losses = {}  
@@ -17,25 +20,22 @@ def train(model, dataloader, optimizer, device):
     
     total_batches = len(dataloader)
     
-    for batch_idx, (inputs, targets, masks, lengths, sample_indices, window_indices) in enumerate(dataloader):
+    for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in enumerate(dataloader):
         if batch_idx > 0 and batch_idx % 10 == 0:
             torch.cuda.empty_cache()
         
-        inputs = inputs.contiguous().to(device)
-        targets = targets.contiguous().to(device)
-        masks = masks.contiguous().to(device)
-        lengths = lengths.contiguous().to(device)
+        inputs = inputs.to(device) # [B, seq_len, 6]
+        targets = targets.cpu() # [B, seq_len, 2]
+        masks = masks.cpu() # [B, seq_len]
+        lengths = torch.full((inputs.size(0),), inputs.size(1), dtype=torch.int64)
+        outputs = model(inputs, lengths) # [B, seq_len, 2]
         
-        outputs = model(inputs, lengths)
-        
-        # 维度匹配
-        targets = targets[:, :outputs.shape[1], :].contiguous()
-        masks = masks[:, :outputs.shape[1]].contiguous()
-        masks = masks.unsqueeze(-1).expand(-1, -1, 2).contiguous()
-        
-        # 计算每个窗口的损失
+        outputs = outputs.cpu()
+        masks = masks.unsqueeze(-1).expand(-1, -1, 2).cpu()
         loss_per_element = (outputs - targets) ** 2
         masked_loss = loss_per_element * masks
+        masked_loss = masked_loss
+        traj_loss = traj_dist((outputs * masks), targets) ** 2
         
         batch_size = inputs.size(0)
         for i in range(batch_size):
@@ -47,22 +47,20 @@ def train(model, dataloader, optimizer, device):
             
             # 计算当前样本的损失
             sample_loss = masked_loss[i][masks[i] > 0].sum().item()
+            sample_traj_loss = (traj_dist(outputs[i] * masks[i], targets[i]) ** 2).sum().item()
             valid_elements = masks[i].sum().item()
             
-            sample_losses[sample_idx] += sample_loss
+            sample_losses[sample_idx] += sample_loss + sample_traj_loss
             sample_valid_elements[sample_idx] += valid_elements
         
-        # 计算当前批次的平均损失
-        current_valid = masks.sum()
-        if current_valid > 0:
-            loss = masked_loss.sum() / current_valid
-            optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-            
-            # 记录每个batch的损失
-            wandb.log({"batch_loss": loss.item()})
+        valid_len = masks.sum()
+        loss = (masked_loss.sum() + traj_loss.sum()) / valid_len
+        optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+        
+        wandb.log({"batch_loss": loss.item()})
         
         # 显示进度
         # if (batch_idx + 1) % progress_interval == 0:
@@ -181,7 +179,7 @@ def train_model():
             scheduler.step()
             
         train_loss = train(model, train_loader, optimizer, DEVICE)
-        val_loss = validate(model, val_loader, DEVICE, epoch=epoch, plot=True)
+        val_loss = validate(model, val_loader, epoch=epoch, plot=True)
 
         # 检查是否有显著改善
         if val_loss < (best_val_loss - min_delta):

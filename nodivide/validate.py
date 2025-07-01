@@ -1,7 +1,7 @@
 import os
 from matplotlib.pyplot import plot
 import torch
-from .dataset import IMUTrajectoryDataset, collate_fn, speed2point
+from .dataset import speed2point
 from .model import IMUToTrajectoryNet
 from .config import *
 import numpy as np
@@ -9,7 +9,7 @@ import swanlab as wandb
 import matplotlib.pyplot as plt
 
 
-def validate(model, dataloader, device, epoch=None, plot=True):
+def validate(model, dataloader, epoch=None, plot=True):
     if model is None:
         model = IMUToTrajectoryNet()
         model.load_state_dict(torch.load(MODEL_SAVE_PATH))
@@ -19,14 +19,14 @@ def validate(model, dataloader, device, epoch=None, plot=True):
     sample_valid_elements = {}
     samples_pred = {}
     samples_targ = {}
+    device = DEVICE
     
     with torch.no_grad():
-        for batch_idx, (inputs, targets, masks, lengths, sample_indices, window_indices) in enumerate(dataloader):
-            inputs = inputs.contiguous().to(DEVICE)
-            targets = targets.contiguous().to(DEVICE)
-            masks = masks.contiguous().to(DEVICE)
-            lengths = lengths.contiguous().to(DEVICE)
-            
+        for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in enumerate(dataloader):
+            inputs = inputs.contiguous().to(device)
+            targets = targets.contiguous().to(device)
+            masks = masks.contiguous().to(device)
+            lengths = torch.full((inputs.size(0),), inputs.size(1), dtype=torch.int64)
             outputs = model(inputs, lengths)
             
             targets = targets[:, :outputs.shape[1], :].contiguous()
@@ -66,8 +66,9 @@ def validate(model, dataloader, device, epoch=None, plot=True):
     
     if plot and epoch is not None:
         draw_trajectory_plots(samples_pred, samples_targ, epoch)
-        for sample_idx in range(len(samples_pred)):
-            window_indices = sorted(samples_pred[sample_idx].keys())
+        for sample_idx, pred_windows in samples_pred.items():
+            if sample_idx // 100 != 9: continue
+            window_indices = sorted(pred_windows.keys())
             for window_idx in window_indices:
                 try:
                     img_path = os.path.join('trajectory_plots',f'sample_{sample_idx}', f'window_{window_idx}_epoch_{epoch}.png')
@@ -85,6 +86,7 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
     stride = TRAIN_CONFIG["stride"]
 
     for sample_idx, pred_windows in samples_pred.items():
+        if sample_idx // 100 != 9: continue
         sample_dir = os.path.join(plot_dir, f'sample_{sample_idx}')
         os.makedirs(sample_dir, exist_ok=True)
         targ_windows = samples_targ[sample_idx]

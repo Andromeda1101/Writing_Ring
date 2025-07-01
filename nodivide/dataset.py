@@ -66,7 +66,6 @@ class IMUTrajectoryDataset(Dataset):
                                     'x': window_x,
                                     'y': window_y,
                                     'm': window_m,
-                                    'length': self.window_size,
                                     'sample_idx': sample_idx,  # 样本ID
                                     'window_idx': start // self.stride  # 窗口ID
                                 })
@@ -105,11 +104,10 @@ def collate_fn(batch):
     inputs = torch.stack([item['x'] for item in batch])
     targets = torch.stack([item['y'] for item in batch])
     masks = torch.stack([item['m'] for item in batch])
-    lengths = torch.tensor([item['length'] for item in batch])
     sample_idx = torch.tensor([item['sample_idx'] for item in batch])
     window_idx = torch.tensor([item['window_idx'] for item in batch])
     
-    return inputs, targets, masks, lengths, sample_idx, window_idx
+    return inputs, targets, masks, sample_idx, window_idx
 
 def smooth_data(data):
     smooth_data = data.copy()
