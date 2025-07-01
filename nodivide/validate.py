@@ -67,6 +67,7 @@ def validate(model, dataloader, device, epoch=None, plot=True):
     if plot and epoch is not None:
         draw_trajectory_plots(samples_pred, samples_targ, epoch)
         for sample_idx, pred_windows in samples_pred.items():
+            if sample_idx // 100 != 9: continue
             window_indices = sorted(pred_windows.keys())
             for window_idx in window_indices:
                 try:
@@ -85,6 +86,7 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
     stride = TRAIN_CONFIG["stride"]
 
     for sample_idx, pred_windows in samples_pred.items():
+        if sample_idx // 100 != 9: continue
         sample_dir = os.path.join(plot_dir, f'sample_{sample_idx}')
         os.makedirs(sample_dir, exist_ok=True)
         targ_windows = samples_targ[sample_idx]
