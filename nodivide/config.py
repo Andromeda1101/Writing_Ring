@@ -13,10 +13,14 @@ MODEL_CONFIG = {
     "hidden_size": 128,  
     "num_layers": 3,    
     "output_size": 2,
-    "kernel_size_conv": (200 + 1, 2 + 1),
-    "kernel_size_pool": (200 + 1, 1),
-    "padding_conv": (100, 1),
-    "padding_pool": (100, 0),
+    "kernel_size_conv1": (256 + 1, 2 + 1),
+    "kernel_size_pool1": (256 + 1, 1),
+    "padding_conv1": (128, 1),
+    "padding_pool1": (128, 0),
+    "kernel_size_conv2": (128 + 1, 2 + 1),
+    "kernel_size_pool2": (128 + 1, 1),
+    "padding_conv2": (64, 1),
+    "padding_pool2": (64, 0),
     "length": DATA_LENGTH,
     "dropout": 0.2     
 }
@@ -31,5 +35,7 @@ TRAIN_CONFIG = {
     "batch_size": 32,   
     "time_step": DATA_LENGTH,
     "stride": 10000,
-    "warmup_steps": 10
+    "warmup_steps": 10,
+    "grad_weight": 0.6,
+    "dist_weight": 0.6
 }

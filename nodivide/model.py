@@ -28,17 +28,21 @@ class IMUToTrajectoryNet(nn.Module):
         # 全连接层
         self.fc = nn.Linear(self.config["hidden_size"], self.config["output_size"])
         
-        # 轨迹校正网络 - 使用2D卷积
+        # 轨迹校正网络
         self.correction_net = nn.Sequential(
-            # 第一层2D卷积
-            nn.Conv2d(1, 32, kernel_size=self.config["kernel_size_conv"], padding=self.config["padding_conv"]),
-            nn.AvgPool2d(kernel_size=self.config["kernel_size_pool"], stride=(1, 1), padding=self.config["padding_pool"]),
+            # 第一层卷积
+            nn.Conv2d(1, 32, kernel_size=self.config["kernel_size_conv1"], padding=self.config["padding_conv1"]),
+            nn.Tanh(),
+            nn.AvgPool2d(kernel_size=self.config["kernel_size_pool1"], stride=(1, 1), padding=self.config["padding_pool1"]),
+            nn.BatchNorm2d(32),
             
-            # 第二层2D卷积
-            nn.Conv2d(32, 8, kernel_size=self.config["kernel_size_conv"], padding=self.config["padding_conv"]),
-            nn.AvgPool2d(kernel_size=self.config["kernel_size_pool"], stride=(1, 1), padding=self.config["padding_pool"]),
+            # 第二层卷积
+            nn.Conv2d(32, 8, kernel_size=self.config["kernel_size_conv2"], padding=self.config["padding_conv2"]),
+            nn.Tanh(),
+            nn.AvgPool2d(kernel_size=self.config["kernel_size_pool2"], stride=(1, 1), padding=self.config["padding_pool2"]),
+            nn.BatchNorm2d(8),
             
-            # 最终映射回输出维度
+            # 映射回输出维度
             nn.Conv2d(8, 1, kernel_size=1)
         )
 

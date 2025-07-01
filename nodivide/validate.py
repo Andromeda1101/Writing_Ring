@@ -24,14 +24,12 @@ def validate(model, dataloader, epoch=None, plot=True):
     with torch.no_grad():
         for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in enumerate(dataloader):
             inputs = inputs.contiguous().to(device)
-            targets = targets.contiguous().to(device)
-            masks = masks.contiguous().to(device)
+            targets = targets.cpu()
+            masks = masks.cpu()
             lengths = torch.full((inputs.size(0),), inputs.size(1), dtype=torch.int64)
             outputs = model(inputs, lengths)
-            
-            targets = targets[:, :outputs.shape[1], :].contiguous()
-            masks = masks[:, :outputs.shape[1]].contiguous()
-            masks = masks.unsqueeze(-1).expand(-1, -1, 2).contiguous()
+            outputs = outputs.cpu()
+            masks = masks.unsqueeze(-1).expand(-1, -1, 2).cpu()
             
             loss_per_element = (outputs - targets) ** 2
             masked_loss = loss_per_element * masks
@@ -55,8 +53,8 @@ def validate(model, dataloader, epoch=None, plot=True):
                 if sample_idx not in samples_pred:
                     samples_pred[sample_idx] = {}
                     samples_targ[sample_idx] = {}
-                samples_pred[sample_idx][window_indices[i].item()] = (outputs[i]*masks[i]).cpu().numpy()
-                samples_targ[sample_idx][window_indices[i].item()] = (targets[i]*masks[i]).cpu().numpy()
+                samples_pred[sample_idx][window_indices[i].item()] = (outputs[i] * masks[i]).cpu().numpy()
+                samples_targ[sample_idx][window_indices[i].item()] = (targets[i] * masks[i]).cpu().numpy()
     
     # 所有样本的平均损失
     total_loss = sum(sample_losses.values())
@@ -84,7 +82,7 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
     os.makedirs(plot_dir, exist_ok=True)
     window_size = TRAIN_CONFIG["time_step"]
     stride = TRAIN_CONFIG["stride"]
-
+    
     for sample_idx, pred_windows in samples_pred.items():
         if sample_idx // 100 != 9: continue
         sample_dir = os.path.join(plot_dir, f'sample_{sample_idx}')
@@ -93,8 +91,8 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
 
         window_indices = sorted(pred_windows.keys())
         for window_idx in window_indices:
-            plt.figure(figsize=(100, 60))
-            plt.subplot(3, 1, 1)
+            plt.figure(figsize=(80, 100))
+            plt.subplot(2, 1, 1)
             plt.title(f'Sample {sample_idx} Trajectory (Epoch {epoch}, Window {window_idx})')
             window_pred = pred_windows[window_idx]
             window_targ = targ_windows[window_idx]
@@ -107,7 +105,7 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
             plt.axis('equal')
             plt.legend()
 
-            plt.subplot(3, 1, 2)
+            plt.subplot(4, 1, 3)
             time_steps = np.arange(window_size)
             plt.plot(time_steps, window_pred[:, 0], 'r-', label='Predicted', alpha=0.5)
             plt.plot(time_steps, window_targ[:, 0], 'b-', label='Ground Truth', alpha=0.5)
@@ -115,7 +113,7 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
             plt.ylabel('X')
             plt.legend()
 
-            plt.subplot(3, 1, 3)
+            plt.subplot(4, 1, 4)
             plt.plot(time_steps, window_pred[:, 1], 'r-', label='Predicted', alpha=0.5)
             plt.plot(time_steps, window_targ[:, 1], 'b-', label='Ground Truth', alpha=0.5)
             plt.xlabel('Time Step') 

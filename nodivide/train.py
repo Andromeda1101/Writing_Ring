@@ -9,9 +9,28 @@ from torch.utils.data import Subset
 import swanlab as wandb
 from torch.utils.data import Dataset, DataLoader
 from .validate import validate
+import numpy as np
 
-def traj_dist(outputs, targets):
-    return speed2point(outputs.detach().numpy()) - speed2point(targets.detach().numpy())
+def traject_loss(outputs, targets):
+    outputs_traj = speed2point(outputs.detach().numpy())
+    targets_traj = speed2point(targets.detach().numpy())
+    outputs_traj = np.diff(outputs_traj, axis=0)
+    targets_traj = np.diff(targets_traj, axis=0)
+    traj_dist = outputs_traj - targets_traj
+    traj_dist_loss = np.sqrt(traj_dist[:, 0] ** 2 + traj_dist[:, 1] ** 2).mean()
+    
+    outputs_angles = np.arctan2(outputs_traj[:, 1], outputs_traj[:, 0])
+    targets_angles = np.arctan2(targets_traj[:, 1], targets_traj[:, 0])
+    outputs_grad = np.diff(outputs_angles)
+    targets_grad = np.diff(targets_angles)
+    outputs_grad = np.where(outputs_grad > np.pi, outputs_grad - 2*np.pi, outputs_grad)
+    outputs_grad = np.where(outputs_grad < -np.pi, outputs_grad + 2*np.pi, outputs_grad)
+    targets_grad = np.where(targets_grad > np.pi, targets_grad - 2*np.pi, targets_grad)
+    targets_grad = np.where(targets_grad < -np.pi, targets_grad + 2*np.pi, targets_grad)
+    traj_grad_loss = np.abs(outputs_grad - targets_grad).mean()
+    
+    return TRAIN_CONFIG["grad_weight"] * traj_grad_loss + TRAIN_CONFIG["dist_weight"] * traj_dist_loss
+
 
 def train(model, dataloader, optimizer, device):
     model.train()
@@ -35,7 +54,7 @@ def train(model, dataloader, optimizer, device):
         loss_per_element = (outputs - targets) ** 2
         masked_loss = loss_per_element * masks
         masked_loss = masked_loss
-        traj_loss = traj_dist((outputs * masks), targets) ** 2
+        traj_loss = 0
         
         batch_size = inputs.size(0)
         for i in range(batch_size):
@@ -47,14 +66,15 @@ def train(model, dataloader, optimizer, device):
             
             # 计算当前样本的损失
             sample_loss = masked_loss[i][masks[i] > 0].sum().item()
-            sample_traj_loss = (traj_dist(outputs[i] * masks[i], targets[i]) ** 2).sum().item()
+            sample_traj_loss = traject_loss(outputs[i] * masks[i], targets[i])
+            traj_loss += sample_traj_loss
             valid_elements = masks[i].sum().item()
             
             sample_losses[sample_idx] += sample_loss + sample_traj_loss
             sample_valid_elements[sample_idx] += valid_elements
         
         valid_len = masks.sum()
-        loss = (masked_loss.sum() + traj_loss.sum()) / valid_len
+        loss = (masked_loss.sum() + traj_loss) / valid_len
         optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)

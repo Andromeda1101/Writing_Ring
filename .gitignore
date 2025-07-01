@@ -11,3 +11,4 @@ __pycache__/
 /*.pth
 /*.png
 smooth_img/
+swanlog/
