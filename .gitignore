@@ -1,6 +1,6 @@
 /data/
 /wandb/
-/trajectory_plots/
+/trajectory_plots*/
 __pycache__/
 *.pyc
 *.pyo

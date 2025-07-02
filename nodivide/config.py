@@ -1,7 +1,17 @@
 # config.py
 import torch
 
-DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+def get_device():
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.init()
+            return torch.device('cuda:0')
+        except RuntimeError:
+            print("CUDA initialization failed, falling back to CPU")
+            return torch.device('cpu')
+    return torch.device('cpu')
+
+DEVICE = get_device()
 DATA_DIR = "data/frame_standard_delete_g" 
 SAVED_DATA_PATH = "nodivide/processed_data.pth"     
 MODEL_SAVE_PATH = "nodivide/best_model.pth"    

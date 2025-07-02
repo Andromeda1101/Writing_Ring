@@ -41,7 +41,7 @@ def traject_loss(outputs, targets):
 def validate(model, dataloader, epoch=None, plot=True):
     if model is None:
         model = IMUToTrajectoryNet()
-        model.load_state_dict(torch.load(MODEL_SAVE_PATH))
+        model.load_state_dict(torch.load(MODEL_SAVE_PATH, map_location=DEVICE))
         model.to(DEVICE)
     model.eval()
     sample_losses = {}
@@ -52,13 +52,17 @@ def validate(model, dataloader, epoch=None, plot=True):
     
     with torch.no_grad():
         for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in enumerate(dataloader):
-            inputs = inputs.contiguous().to(device)
-            targets = targets.cpu()
-            masks = masks.cpu()
+            inputs = inputs.to(device, non_blocking=True)
+            targets = targets.to(device, non_blocking=True)
+            masks = masks.to(device, non_blocking=True)
+            
             lengths = torch.full((inputs.size(0),), inputs.size(1), dtype=torch.int64)
             outputs = model(inputs, lengths)
+            
+            # 计算损失时移到CPU
             outputs = outputs.cpu()
-            masks = masks.unsqueeze(-1).expand(-1, -1, 2).cpu()
+            targets = targets.cpu()
+            masks = masks.cpu()
             
             loss = speed_loss(outputs, targets, masks)
             traj_loss = 0

@@ -50,16 +50,20 @@ def train(model, dataloader, optimizer, device):
     total_batches = len(dataloader)
     
     for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in enumerate(dataloader):
-        if batch_idx > 0 and batch_idx % 10 == 0:
+        if batch_idx > 0 and batch_idx % 10 == 0 and device.type == 'cuda':
             torch.cuda.empty_cache()
         
-        inputs = inputs.to(device) # [B, seq_len, 6]
-        targets = targets.cpu() # [B, seq_len, 2]
-        masks = masks.cpu() # [B, seq_len]
-        lengths = torch.full((inputs.size(0),), inputs.size(1), dtype=torch.int64)
-        outputs = model(inputs, lengths) # [B, seq_len, 2]
+        # 确保数据在正确的设备上
+        inputs = inputs.to(device, non_blocking=True)
+        targets = targets.to(device, non_blocking=True)
+        masks = masks.to(device, non_blocking=True)
         
+        lengths = torch.full((inputs.size(0),), inputs.size(1), dtype=torch.int64)
+        outputs = model(inputs, lengths)
+        
+        # 计算损失时将数据移到CPU以避免CUDA同步问题
         outputs = outputs.cpu()
+        targets = targets.cpu()
         masks = masks.unsqueeze(-1).expand(-1, -1, 2).cpu()
         loss = speed_loss(outputs, targets, masks)
         traj_loss = 0
@@ -103,6 +107,9 @@ def train(model, dataloader, optimizer, device):
 
 
 def train_model():
+    if DEVICE.type == 'cuda':
+        torch.cuda.empty_cache()
+        
     # 初始化wandb
     wandb.init(project="imu-trajectory", config={**MODEL_CONFIG, **TRAIN_CONFIG})
 
@@ -121,17 +128,13 @@ def train_model():
         train_indices = train_idx
         val_indices = val_idx
     
-    # 确保我们有训练集和验证集
     assert train_indices is not None and val_indices is not None
     
-    # 计算测试集大小（使用最后10%的数据）
     test_size = int(0.1 * total_size)
     test_start = total_size - test_size
     
-    # 调整验证集，不要与测试集重叠
     val_indices = val_indices[val_indices < test_start]
     
-    # 创建数据集
     train_dataset = torch.utils.data.Subset(full_dataset, train_indices)
     val_dataset = torch.utils.data.Subset(full_dataset, val_indices)
     test_dataset = torch.utils.data.Subset(full_dataset, range(test_start, total_size))
@@ -170,7 +173,9 @@ def train_model():
         pin_memory=True
     )
 
-    model = IMUToTrajectoryNet().to(DEVICE)
+    model = IMUToTrajectoryNet()
+    model = model.to(DEVICE)
+    
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=TRAIN_CONFIG["lr"],
