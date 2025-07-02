@@ -59,10 +59,9 @@ def validate(model, dataloader, epoch=None, plot=True):
             lengths = torch.full((inputs.size(0),), inputs.size(1), dtype=torch.int64)
             outputs = model(inputs, lengths)
             
-            # 计算损失时移到CPU
             outputs = outputs.cpu()
             targets = targets.cpu()
-            masks = masks.cpu()
+            masks = masks.unsqueeze(-1).expand(-1, -1, 2).cpu()
             
             loss = speed_loss(outputs, targets, masks)
             traj_loss = 0
