@@ -8,6 +8,7 @@ import numpy as np
 import swanlab as wandb
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
+import tqdm
 
 def speed_loss(outputs, targets, masks, alpha=0.8):
     mse = ((outputs - targets) ** 2) * masks
@@ -51,7 +52,7 @@ def validate(model, dataloader, epoch=None, plot=True):
     device = DEVICE
     
     with torch.no_grad():
-        for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in enumerate(dataloader):
+        for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in tqdm.tqdm(enumerate(dataloader)):
             inputs = inputs.to(device, non_blocking=True)
             targets = targets.to(device, non_blocking=True)
             masks = masks.to(device, non_blocking=True)
@@ -99,7 +100,7 @@ def validate(model, dataloader, epoch=None, plot=True):
     if plot and epoch is not None and epoch % 10 == 0:
         draw_trajectory_plots(samples_pred, samples_targ, epoch)
         for sample_idx, pred_windows in samples_pred.items():
-            if sample_idx // 10 > 93: continue
+            if sample_idx // 10 > 91 or sample_idx // 10 < 90: continue
             window_indices = sorted(pred_windows.keys())
             for window_idx in window_indices:
                 try:
@@ -118,7 +119,7 @@ def draw_trajectory_plots(samples_pred, samples_targ, epoch):
     stride = TRAIN_CONFIG["stride"]
 
     for sample_idx, pred_windows in samples_pred.items():
-        if sample_idx // 100 != 9: continue
+        if sample_idx // 10 > 91 or sample_idx // 10 < 90: continue
         sample_dir = os.path.join(plot_dir, f'sample_{sample_idx}')
         os.makedirs(sample_dir, exist_ok=True)
         targ_windows = samples_targ[sample_idx]

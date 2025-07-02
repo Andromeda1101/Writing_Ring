@@ -7,6 +7,7 @@ from .config import *
 from torch.utils.data import Subset
 # import wandb
 import swanlab as wandb
+import tqdm
 from torch.utils.data import Dataset, DataLoader
 from .validate import validate
 import numpy as np
@@ -49,7 +50,7 @@ def train(model, dataloader, optimizer, device):
     
     total_batches = len(dataloader)
     
-    for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in enumerate(dataloader):
+    for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in tqdm.tqdm(enumerate(dataloader)):
         if batch_idx > 0 and batch_idx % 10 == 0 and device.type == 'cuda':
             torch.cuda.empty_cache()
         

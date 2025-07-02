@@ -4,3 +4,4 @@ scipy
 scikit_learn
 torch
 swanlab
+tqdm
