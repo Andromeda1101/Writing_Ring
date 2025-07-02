@@ -23,8 +23,8 @@ def speed_loss(outputs, targets, masks, alpha=0.8):
 def traject_loss(outputs, targets):
     outputs_traj = speed2point(outputs.detach().numpy())
     targets_traj = speed2point(targets.detach().numpy())
-    traj_dist = outputs_traj - targets_traj
-    traj_dist_loss = ((traj_dist[:, 0] ** 2 + traj_dist[:, 1] ** 2)).mean()
+    # traj_dist = outputs_traj - targets_traj
+    # traj_dist_loss = ((traj_dist[:, 0] ** 2 + traj_dist[:, 1] ** 2)).mean()
     
     outputs_angles = np.arctan2(outputs_traj[:, 1], outputs_traj[:, 0])
     targets_angles = np.arctan2(targets_traj[:, 1], targets_traj[:, 0])
@@ -36,7 +36,7 @@ def traject_loss(outputs, targets):
     targets_grad = np.where(targets_grad < -np.pi, targets_grad + 2*np.pi, targets_grad)
     traj_grad_loss = np.abs(outputs_grad - targets_grad).mean()
     
-    return TRAIN_CONFIG["grad_weight"] * traj_grad_loss + TRAIN_CONFIG["dist_weight"] * traj_dist_loss
+    return TRAIN_CONFIG["grad_weight"] * traj_grad_loss # + TRAIN_CONFIG["dist_weight"] * traj_dist_loss
 
 def validate(model, dataloader, epoch=None, plot=True):
     if model is None:
@@ -96,10 +96,10 @@ def validate(model, dataloader, epoch=None, plot=True):
     avg_loss = total_loss / total_valid if total_valid > 0 else float('inf')
     wandb.log({"val_loss": avg_loss})
     
-    if plot and epoch is not None:
+    if plot and epoch is not None and epoch % 10 == 0:
         draw_trajectory_plots(samples_pred, samples_targ, epoch)
         for sample_idx, pred_windows in samples_pred.items():
-            if sample_idx // 100 != 9: continue
+            if sample_idx // 10 > 93: continue
             window_indices = sorted(pred_windows.keys())
             for window_idx in window_indices:
                 try:

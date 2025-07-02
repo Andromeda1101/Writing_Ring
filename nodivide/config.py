@@ -46,6 +46,6 @@ TRAIN_CONFIG = {
     "time_step": DATA_LENGTH,
     "stride": 10000,
     "warmup_steps": 10,
-    "grad_weight": 0.6,
+    "grad_weight": 2.0,
     "dist_weight": 0.6
 }

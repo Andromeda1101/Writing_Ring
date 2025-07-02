@@ -26,8 +26,8 @@ def speed_loss(outputs, targets, masks, alpha=0.8):
 def traject_loss(outputs, targets):
     outputs_traj = speed2point(outputs.detach().numpy())
     targets_traj = speed2point(targets.detach().numpy())
-    traj_dist = outputs_traj - targets_traj
-    traj_dist_loss = ((traj_dist[:, 0] ** 2 + traj_dist[:, 1] ** 2)).mean()
+    # traj_dist = outputs_traj - targets_traj
+    # traj_dist_loss = ((traj_dist[:, 0] ** 2 + traj_dist[:, 1] ** 2)).mean()
     
     outputs_angles = np.arctan2(outputs_traj[:, 1], outputs_traj[:, 0])
     targets_angles = np.arctan2(targets_traj[:, 1], targets_traj[:, 0])
@@ -39,7 +39,7 @@ def traject_loss(outputs, targets):
     targets_grad = np.where(targets_grad < -np.pi, targets_grad + 2*np.pi, targets_grad)
     traj_grad_loss = np.abs(outputs_grad - targets_grad).mean()
     
-    return TRAIN_CONFIG["grad_weight"] * traj_grad_loss + TRAIN_CONFIG["dist_weight"] * traj_dist_loss
+    return TRAIN_CONFIG["grad_weight"] * traj_grad_loss # + TRAIN_CONFIG["dist_weight"] * traj_dist_loss
 
 
 def train(model, dataloader, optimizer, device):
