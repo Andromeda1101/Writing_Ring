@@ -86,6 +86,7 @@ def train(model, dataloader, optimizer, device):
             sample_valid_elements[sample_idx] += valid_elements
         
         optimizer.zero_grad()
+        loss = loss + traj_loss
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
