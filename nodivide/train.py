@@ -1,7 +1,7 @@
 # train.py
 from sklearn.model_selection import TimeSeriesSplit
 import torch
-from .dataset import IMUTrajectoryDataset, collate_fn, speed2point
+from .dataset import IMUTrajectoryDataset, collate_fn
 from .model import IMUToTrajectoryNet
 from .config import *
 from torch.utils.data import Subset
@@ -11,101 +11,54 @@ import tqdm
 from torch.utils.data import Dataset, DataLoader
 from .validate import validate
 import numpy as np
-import torch.nn.functional as F
-
-def speed_loss(outputs, targets, masks, alpha=0.8):
-    mse = ((outputs - targets) ** 2) * masks
-    mse_loss = mse.sum() / masks.sum()
-    outputs_masked = outputs * masks
-    targets_masked = targets * masks
-    outputs_flat = outputs_masked.view(outputs_masked.size(0), -1)
-    targets_flat = targets_masked.view(targets_masked.size(0), -1)
-    cos_sim = F.cosine_similarity(outputs_flat, targets_flat, dim=1)
-    cos_loss = 1 - cos_sim.mean()
-    return alpha * mse_loss + (1 - alpha) * cos_loss
-
-def traject_loss(outputs, targets):
-    outputs_traj = speed2point(outputs.detach().numpy())
-    targets_traj = speed2point(targets.detach().numpy())
-    # traj_dist = outputs_traj - targets_traj
-    # traj_dist_loss = ((traj_dist[:, 0] ** 2 + traj_dist[:, 1] ** 2)).mean()
-    
-    outputs_angles = np.arctan2(outputs_traj[:, 1], outputs_traj[:, 0])
-    targets_angles = np.arctan2(targets_traj[:, 1], targets_traj[:, 0])
-    outputs_grad = np.diff(outputs_angles)
-    targets_grad = np.diff(targets_angles)
-    outputs_grad = np.where(outputs_grad > np.pi, outputs_grad - 2*np.pi, outputs_grad)
-    outputs_grad = np.where(outputs_grad < -np.pi, outputs_grad + 2*np.pi, outputs_grad)
-    targets_grad = np.where(targets_grad > np.pi, targets_grad - 2*np.pi, targets_grad)
-    targets_grad = np.where(targets_grad < -np.pi, targets_grad + 2*np.pi, targets_grad)
-    traj_grad_loss = np.abs(outputs_grad - targets_grad).mean()
-    
-    return TRAIN_CONFIG["grad_weight"] * traj_grad_loss # + TRAIN_CONFIG["dist_weight"] * traj_dist_loss
-
+from .utils import speed_loss, traject_loss
 
 def train(model, dataloader, optimizer, device):
     model.train()
-    sample_losses = {}  
-    sample_valid_elements = {}  
-    
-    total_batches = len(dataloader)
+    total_loss = 0.0
     
     for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in tqdm.tqdm(enumerate(dataloader)):
-        if batch_idx > 0 and batch_idx % 10 == 0 and device.type == 'cuda':
-            torch.cuda.empty_cache()
-        
-        # 确保数据在正确的设备上
-        inputs = inputs.to(device, non_blocking=True)
-        targets = targets.to(device, non_blocking=True)
-        masks = masks.to(device, non_blocking=True)
-        
-        lengths = torch.full((inputs.size(0),), inputs.size(1), dtype=torch.int64)
-        outputs = model(inputs, lengths)
-        
-        # 计算损失时将数据移到CPU以避免CUDA同步问题
-        outputs = outputs.cpu()
-        targets = targets.cpu()
-        masks = masks.unsqueeze(-1).expand(-1, -1, 2).cpu()
-        loss = speed_loss(outputs, targets, masks)
-        traj_loss = 0
-        
-        batch_size = inputs.size(0)
-        for i in range(batch_size):
-            sample_idx = sample_indices[i].item()  
+        try:
+            inputs = inputs.to(device, non_blocking=True)
+            targets = targets.to(device, non_blocking=True)
+            masks = masks.to(device, non_blocking=True)
             
-            if sample_idx not in sample_losses:
-                sample_losses[sample_idx] = 0
-                sample_valid_elements[sample_idx] = 0
+            outputs = model(inputs)
+            # Check for NaN values in outputs
+            if torch.isnan(outputs).any():
+                raise Exception("NaN detected in outputs")
+            valid_num = masks.sum()
+            masks = masks.unsqueeze(-1).expand(-1, -1, 2)
+            loss = speed_loss(outputs, targets, masks)
+            # Check for NaN values in loss
+            if torch.isnan(loss).any():
+                raise Exception("NaN detected in loss")
+            traj_loss = traject_loss(outputs * masks, targets)
             
-            # 计算当前样本的损失
-            sample_loss = ((outputs[i] - targets[i]) ** 2 * masks[i]).sum().item()
-            sample_traj_loss = traject_loss(outputs[i] * masks[i], targets[i])
-            traj_loss += sample_traj_loss
-            valid_elements = masks[i].sum().item()
+            optimizer.zero_grad()
+            loss = loss + traj_loss
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
             
-            sample_losses[sample_idx] += sample_loss + sample_traj_loss
-            sample_valid_elements[sample_idx] += valid_elements
-        
-        optimizer.zero_grad()
-        loss = loss + traj_loss
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
-        
-        wandb.log({"batch_loss": loss.item()})
-        
-        # 显示进度
-        # if (batch_idx + 1) % progress_interval == 0:
-        #     progress = (batch_idx + 1) / total_batches * 100
-        #     avg_loss = sum(sample_losses.values()) / sum(sample_valid_elements.values()) if sample_valid_elements else 0
-        #     print(f'Training Progress: {progress:.0f}% - Current Loss: {avg_loss:.8f}')
-    
+            total_loss += loss.sum()
+            wandb.log({"batch_loss": loss.sum() / valid_num})
+            
+            # 显示进度
+            # if (batch_idx + 1) % progress_interval == 0:
+            #     progress = (batch_idx + 1) / total_batches * 100
+            #     avg_loss = sum(sample_losses.values()) / sum(sample_valid_elements.values()) if sample_valid_elements else 0
+            #     print(f'Training Progress: {progress:.0f}% - Current Loss: {avg_loss:.8f}')
+        except Exception as e:
+            print(f"Error in batch {batch_idx}: {str(e)}")
+            raise
+
     # 返回所有样本的平均损失
-    total_loss = sum(sample_losses.values())
-    total_valid = sum(sample_valid_elements.values())
-    avg_loss = total_loss / total_valid if total_valid > 0 else 0
+    avg_loss = total_loss / len(dataloader)
     wandb.log({"train_loss": avg_loss})
     return avg_loss
+
+
 
 
 def train_model():

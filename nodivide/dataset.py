@@ -6,7 +6,7 @@ import torch
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from .config import DATA_DIR, SAVED_DATA_PATH, TRAIN_CONFIG
-from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
+from tqdm import tqdm
 
 class IMUTrajectoryDataset(Dataset):
     def __init__(self, data_dir=DATA_DIR, save_processed=True):
@@ -18,7 +18,7 @@ class IMUTrajectoryDataset(Dataset):
 
     def _process_data(self):
         sample_idx = 0
-        for name in os.listdir(self.data_dir):
+        for name in tqdm(os.listdir(self.data_dir)):
             name_path = os.path.join(self.data_dir, name)
             for i in os.listdir(name_path):
                 i_path = os.path.join(name_path, i)
@@ -118,30 +118,6 @@ def smooth_data(data):
     threshold = 0.5
     max_iter = 10
 
-    # for dim in range(2):
-    #     iter_count = 0
-    #     while iter_count < max_iter:
-    #         iter_count += 1
-    #         abs_data = np.abs(smooth_data[:, dim])
-    #         max_val = np.max(abs_data)
-    #         if max_val == 0:
-    #             continue
-    #         max_idx = np.argmax(abs_data)
-
-    #         start_idx = max(0, max_idx - window_size//2)
-    #         end_idx = min(len(smooth_data), max_idx + window_size//2 + 1)
-    #         surroundings_vals = np.abs(smooth_data[start_idx:end_idx, dim])
-    #         surroundings_vals[max_idx - start_idx] = 0  
-    #         max_surrounding_val = np.max(surroundings_vals)
-
-    #         if max_surrounding_val <= threshold * max_val:
-    #             is_changed = True
-    #             new_val = max_val * 0.6 * np.sign(smooth_data[max_idx, dim])
-    #             smooth_data[max_idx, dim] = new_val
-    #             print(f"Dim {dim}, Iter {iter_count}, Def Max Index: {max_idx}, Max Value: {max_val}, Surrounding Max: {max_surrounding_val}")
-    #         else:
-    #             break
-
     for dim in range(2):
         iter_count = 0
         while iter_count < max_iter:
@@ -168,13 +144,14 @@ def smooth_data(data):
                 if max_surrounding_val <= threshold * max_val:
                     is_changed = True
                     iter_changed = True
-                    print(f"Dim {dim}, Iter {iter_count}, Def Max Index: {def_max_idx}, Max Value: {max_val}, Surrounding Max: {max_surrounding_val}")
+                    # print(f"Dim {dim}, Iter {iter_count}, Def Max Index: {def_max_idx}, Max Value: {max_val}, Surrounding Max: {max_surrounding_val}")
                     inter_vals = smooth_data[inter_start_idx:inter_end_idx, dim]
                     smooth_data[inter_start_idx:inter_end_idx, dim] = inter_vals * 0.6
 
             if iter_changed is False:
                 break
-
+    
+    return smooth_data
     if is_changed is True:
         os.makedirs('smooth_img', exist_ok=True)
         plt.figure(figsize=(15, 15))
@@ -212,8 +189,3 @@ def smooth_data(data):
     return smooth_data
 
 
-def speed2point(data, fps=200):
-    points = np.zeros_like(data)
-    for i in range(1, len(data)):
-        points[i] = points[i-1] + data[i] / fps
-    return points
