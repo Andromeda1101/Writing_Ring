@@ -24,15 +24,14 @@ def train(model, dataloader, optimizer, device):
             masks = masks.to(device, non_blocking=True)
             
             outputs = model(inputs)
-            # Check for NaN values in outputs
-            if torch.isnan(outputs).any():
-                raise Exception("NaN detected in outputs")
+            # if torch.isnan(outputs).any():
+            #     raise Exception("NaN detected in outputs")
             valid_num = masks.sum()
             masks = masks.unsqueeze(-1).expand(-1, -1, 2)
             loss = velocity_loss(outputs, targets, masks)
             # Check for NaN values in loss
-            if torch.isnan(loss).any():
-                raise Exception("NaN detected in loss")
+            # if torch.isnan(loss).any():
+            #     raise Exception("NaN detected in loss")
             traj_loss = traject_loss(outputs * masks, targets)
             
             optimizer.zero_grad()

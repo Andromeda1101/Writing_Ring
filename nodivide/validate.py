@@ -55,8 +55,10 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
     if plot and epoch is not None and epoch % 10 == 0:
         plot_dir = 'trajectory_plots'
         os.makedirs(plot_dir, exist_ok=True)
+        pict_num = 0
         for sample_idx, pred_windows in tqdm.tqdm(samples_pred.items()):
-            if not is_test and (sample_idx // 10 > 91 or sample_idx // 10 < 90): continue
+            if not is_test and (pict_num >= 5): continue
+            pict_num += 1
             sample_dir = os.path.join(plot_dir, f'sample_{sample_idx}')
             os.makedirs(sample_dir, exist_ok=True)
             window_indices = sorted(pred_windows.keys())
