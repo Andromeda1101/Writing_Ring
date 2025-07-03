@@ -15,12 +15,12 @@ DEVICE = get_device()
 DATA_DIR = "data/frame_standard_delete_g" 
 SAVED_DATA_PATH = "nodivide/processed_data.pth"     
 MODEL_SAVE_PATH = "nodivide/best_model.pth"    
-DATA_LENGTH = 15000
+DATA_LENGTH = 10000
 
 # 模型参数
 MODEL_CONFIG = {
     "input_size": 6,
-    "hidden_size": 128,  
+    "hidden_size": 256,  
     "num_layers": 3,    
     "output_size": 2,
     "kernel_size_conv1": (256 + 1, 2 + 1),
@@ -32,19 +32,20 @@ MODEL_CONFIG = {
     "padding_conv2": (64, 1),
     "padding_pool2": (64, 0),
     "length": DATA_LENGTH,
-    "dropout": 0.2     
+    "dropout": 0.3,
+    "conv_channels": [64, 128]     
 }
 
 # 训练参数
 TRAIN_CONFIG = {
     "epochs": 300,
-    "lr": 0.0005,      
+    "lr": 0.001,      
     "weight_decay": 1e-4,  
     "patience": 10,
     "min_delta": 1e-6,
-    "batch_size": 32,   
+    "batch_size": 8,   
     "time_step": DATA_LENGTH,
-    "stride": 10000,
+    "stride": 5000,
     "warmup_steps": 10,
     "grad_weight": 2.0,
     "dist_weight": 0.6

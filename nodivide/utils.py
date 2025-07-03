@@ -11,38 +11,35 @@ def speed2traj(data, fps=200):
 def speed2point(data, fps=200):
     return torch.cumsum(data / fps, dim=1)
 
-def speed_loss(outputs, targets, masks, alpha=0.8):
-    mse = ((outputs - targets) ** 2) * masks
-    mse_loss = mse.sum() / (masks.sum() + 1e-8)  
+def velocity_loss(outputs, target, masks, alpha=0.7):
+    outputs = outputs * masks
+    mse_loss = F.mse_loss(outputs, target, reduction='sum') / (masks.sum() + 1e-8)
     
-    outputs_masked = outputs * masks
-    targets_masked = targets * masks
+    pred_dir = F.normalize(outputs, dim=-1)
+    target_dir = F.normalize(target, dim=-1)
+    dir_loss = 1 - F.cosine_similarity(pred_dir, target_dir, dim=-1).mean()
     
-    outputs_flat = outputs_masked.view(outputs_masked.size(0), -1)
-    targets_flat = targets_masked.view(targets_masked.size(0), -1)
-    
-    cos_sim = F.cosine_similarity(outputs_flat, targets_flat, dim=1)
-    cos_loss = (1 - cos_sim).mean()
-    
-    return alpha * mse_loss + (1 - alpha) * cos_loss
+    return alpha * mse_loss + (1 - alpha) * dir_loss
 
-def traject_loss(outputs, targets, position_weight=0.4, direction_weight=0.3):
+def traject_loss(outputs, targets, position_weight=0.5, direction_weight=0.5):
     outputs_traj = speed2point(outputs)
     targets_traj = speed2point(targets)
     
-    position_loss = torch.mean((outputs_traj - targets_traj) ** 2)
+    rel_position_loss = F.mse_loss(
+        outputs_traj[:, 1:] - outputs_traj[:, :-1],
+        targets_traj[:, 1:] - targets_traj[:, :-1]
+    )
     
-    outputs_diff = outputs_traj[:, 1:] - outputs_traj[:, :-1]
-    targets_diff = targets_traj[:, 1:] - targets_traj[:, :-1]
+    abs_position_loss = F.mse_loss(outputs_traj, targets_traj)
     
-    outputs_norm = torch.nn.functional.normalize(outputs_diff, dim=-1)
-    targets_norm = torch.nn.functional.normalize(targets_diff, dim=-1)
+    outputs_dir = outputs_traj[:, 1:] - outputs_traj[:, :-1]
+    targets_dir = targets_traj[:, 1:] - targets_traj[:, :-1]
+    direction_loss = 1 - F.cosine_similarity(outputs_dir, targets_dir, dim=-1).mean()
     
-    direction_sim = torch.sum(outputs_norm * targets_norm, dim=-1)
-    direction_loss = torch.mean(1 - direction_sim)
-    
-    total_loss = (position_weight * position_loss + 
-                 direction_weight * direction_loss)
+    total_loss = (
+        position_weight * (0.4 * rel_position_loss + 0.6 * abs_position_loss) + 
+        direction_weight * direction_loss
+    )
     
     return total_loss
 

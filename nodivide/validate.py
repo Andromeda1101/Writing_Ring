@@ -4,7 +4,7 @@ from .model import IMUToTrajectoryNet
 from .config import *
 import swanlab as wandb
 import tqdm
-from .utils import speed_loss, traject_loss, draw_trajectory_plots
+from .utils import velocity_loss, traject_loss, draw_trajectory_plots
 
 def validate(model, dataloader, epoch=0, plot=True, is_test=False):
     if model is None:
@@ -27,7 +27,7 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
 
             valid_num = masks.sum()
             masks = masks.unsqueeze(-1).expand(-1, -1, 2)
-            loss = speed_loss(outputs, targets, masks)
+            loss = velocity_loss(outputs, targets, masks)
             traj_loss = traject_loss(outputs * masks, targets)
 
             total_loss += loss + traj_loss

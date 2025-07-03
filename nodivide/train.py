@@ -11,7 +11,7 @@ import tqdm
 from torch.utils.data import Dataset, DataLoader
 from .validate import validate
 import numpy as np
-from .utils import speed_loss, traject_loss
+from .utils import velocity_loss, traject_loss
 
 def train(model, dataloader, optimizer, device):
     model.train()
@@ -29,7 +29,7 @@ def train(model, dataloader, optimizer, device):
                 raise Exception("NaN detected in outputs")
             valid_num = masks.sum()
             masks = masks.unsqueeze(-1).expand(-1, -1, 2)
-            loss = speed_loss(outputs, targets, masks)
+            loss = velocity_loss(outputs, targets, masks)
             # Check for NaN values in loss
             if torch.isnan(loss).any():
                 raise Exception("NaN detected in loss")
@@ -192,7 +192,7 @@ def train_model():
         })
     
     # model.load_state_dict(torch.load('best_masked_model.pth'))
-    test_loss = validate(model, test_loader, DEVICE, plot=True)
+    test_loss = validate(model, test_loader, plot=True, is_test=True)
     print(f'Final Test Loss: {test_loss:.8f}')
     wandb.log({"final_test_loss": test_loss})
 
