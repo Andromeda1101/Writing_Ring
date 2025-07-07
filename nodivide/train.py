@@ -13,7 +13,7 @@ from .validate import validate
 import numpy as np
 from .utils import velocity_loss, traject_loss
 
-def train(model, dataloader, optimizer, device):
+def train(model, dataloader, optimizer, scheduler, device):
     model.train()
     total_loss = 0.0
     
@@ -40,6 +40,7 @@ def train(model, dataloader, optimizer, device):
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+            scheduler.step()
             
             total_loss += loss.sum()
             wandb.log({"batch_loss": loss.sum() / valid_num})
@@ -104,9 +105,9 @@ def train_model():
     train_loader = DataLoader(
         train_dataset, 
         batch_size=TRAIN_CONFIG["batch_size"], 
-        shuffle=False,
+        shuffle=True,
         collate_fn=collate_fn,
-        num_workers=0,
+        num_workers=4,
         pin_memory=True
     )
 
@@ -115,7 +116,7 @@ def train_model():
         batch_size=TRAIN_CONFIG["batch_size"],
         shuffle=False,
         collate_fn=collate_fn,
-        num_workers=0,
+        num_workers=4,
         pin_memory=True
     )
 
@@ -124,7 +125,7 @@ def train_model():
         batch_size=TRAIN_CONFIG["batch_size"], 
         shuffle=False,
         collate_fn=collate_fn,
-        num_workers=0,
+        num_workers=4,
         pin_memory=True
     )
 
@@ -140,42 +141,35 @@ def train_model():
     # 学习率调度器
     warmup_steps = TRAIN_CONFIG["warmup_steps"]
     total_steps = TRAIN_CONFIG["epochs"]
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
-        T_0=total_steps - warmup_steps,
-        T_mult=1,
-        eta_min=1e-6
+        max_lr=TRAIN_CONFIG["lr"],
+        epochs=TRAIN_CONFIG["epochs"],
+        steps_per_epoch=len(train_loader),
+        pct_start=0.05, 
+        anneal_strategy='cos',
+        div_factor=25,  
+        final_div_factor=1e4
     )
 
     best_val_loss = float('inf')
     patience = TRAIN_CONFIG["patience"]
     patience_counter = 0
-    min_delta = 1e-6  # 最小改善阈值
     
     for epoch in range(TRAIN_CONFIG["epochs"]):
-        print("")
-        print("Start Training epoch: ", epoch)
+        print("")        
         
-        # 学习率预热
-        if epoch < warmup_steps:
-            lr = TRAIN_CONFIG["lr"] * (epoch + 1) / warmup_steps
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr
-        else:
-            scheduler.step()
-            
-        train_loss = train(model, train_loader, optimizer, DEVICE)
+        train_loss = train(model, train_loader, optimizer, scheduler, DEVICE)
         val_loss = validate(model, val_loader, epoch=epoch, plot=True)
 
-        # 检查是否有显著改善
-        if val_loss < (best_val_loss - min_delta):
+        if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), 'best_masked_model.pth')
             patience_counter = 0
         else:
             patience_counter += 1
             
-        # 学习率调整和早停
+        # 早停
         if patience_counter >= patience:
             print(f"Early stopping triggered after {epoch + 1} epochs")
             break

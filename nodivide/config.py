@@ -30,14 +30,14 @@ MODEL_CONFIG = {
 # 训练参数
 TRAIN_CONFIG = {
     "epochs": 300,
-    "lr": 0.01,      
+    "lr": 0.001,      
     "weight_decay": 1e-4,  
-    "patience": 10,
+    "patience": 20,
     "min_delta": 1e-6,
     "batch_size": 32,   
     "time_step": DATA_LENGTH,
     "stride": 5000,
-    "warmup_steps": 10,
+    "warmup_steps": 20,
     "grad_weight": 2.0,
     "dist_weight": 0.6
 }
