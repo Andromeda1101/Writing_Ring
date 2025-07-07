@@ -190,7 +190,6 @@ def train_model():
     print(f'Final Test Loss: {test_loss:.8f}')
     wandb.log({"final_test_loss": test_loss})
 
-    # 在程序结束时关闭wandb
     wandb.finish()
     torch.save(model.state_dict(), MODEL_SAVE_PATH)
 

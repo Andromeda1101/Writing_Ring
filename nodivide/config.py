@@ -20,7 +20,7 @@ DATA_LENGTH = 10000
 # 模型参数
 MODEL_CONFIG = {
     "input_size": 6,
-    "hidden_size": 256,  
+    "hidden_size": 512,  
     "num_layers": 3,    
     "output_size": 2,
     "length": DATA_LENGTH,
@@ -30,11 +30,11 @@ MODEL_CONFIG = {
 # 训练参数
 TRAIN_CONFIG = {
     "epochs": 300,
-    "lr": 0.001,      
+    "lr": 0.0005,      
     "weight_decay": 1e-4,  
-    "patience": 20,
+    "patience": 10,
     "min_delta": 1e-6,
-    "batch_size": 4,   
+    "batch_size": 8,   
     "time_step": DATA_LENGTH,
     "stride": 5000,
     "warmup_steps": 20,
