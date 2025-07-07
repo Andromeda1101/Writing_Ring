@@ -11,18 +11,21 @@ from torch.utils.data import Dataset, DataLoader
 from .validate import validate
 import torch.nn.functional as F
 
-def trajectory_loss(outputs, targets, masks, alpha=0.8):
-    # MSE部分
+def full_align_loss(outputs, targets, masks, alpha=0.7, beta=0.2, gamma=0.1):
     mse = ((outputs - targets) ** 2) * masks
     mse_loss = mse.sum() / masks.sum()
-    # 余弦相似度部分（只对有效mask部分）
-    outputs_masked = outputs * masks
-    targets_masked = targets * masks
-    outputs_flat = outputs_masked.view(outputs_masked.size(0), -1)
-    targets_flat = targets_masked.view(targets_masked.size(0), -1)
-    cos_sim = F.cosine_similarity(outputs_flat, targets_flat, dim=1)
-    cos_loss = 1 - cos_sim.mean()
-    return alpha * mse_loss + (1 - alpha) * cos_loss
+    # 去均值MSE
+    outputs_centered = outputs - (outputs * masks).sum(dim=1, keepdim=True) / (masks.sum(dim=1, keepdim=True) + 1e-8)
+    targets_centered = targets - (targets * masks).sum(dim=1, keepdim=True) / (masks.sum(dim=1, keepdim=True) + 1e-8)
+    mse_centered = ((outputs_centered - targets_centered) ** 2) * masks
+    mse_centered_loss = mse_centered.sum() / masks.sum()
+    # 端点对齐损失
+    start_mask = masks[:, 0:1, :]
+    end_mask = masks[:, -1:, :]
+    start_loss = (((outputs[:, 0:1, :] - targets[:, 0:1, :]) ** 2) * start_mask).sum() / (start_mask.sum() + 1e-8)
+    end_loss = (((outputs[:, -1:, :] - targets[:, -1:, :]) ** 2) * end_mask).sum() / (end_mask.sum() + 1e-8)
+    endpoint_loss = (start_loss + end_loss) / 2
+    return alpha * mse_loss + beta * mse_centered_loss + gamma * endpoint_loss
 
 def train(model, dataloader, optimizer, device):
     model.train()
@@ -47,8 +50,8 @@ def train(model, dataloader, optimizer, device):
         masks = masks[:, :outputs.shape[1]].contiguous()
         masks = masks.unsqueeze(-1).expand(-1, -1, 2).contiguous()
         
-        # 损失函数替换为混合损失
-        loss = trajectory_loss(outputs, targets, masks)
+        # 损失函数替换为full_align_loss
+        loss = full_align_loss(outputs, targets, masks)
         
         batch_size = inputs.size(0)
         for i in range(batch_size):
