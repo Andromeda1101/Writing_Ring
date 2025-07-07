@@ -20,7 +20,7 @@ DATA_LENGTH = 10000
 # 模型参数
 MODEL_CONFIG = {
     "input_size": 6,
-    "hidden_size": 128,  
+    "hidden_size": 256,  
     "num_layers": 3,    
     "output_size": 2,
     "length": DATA_LENGTH,
@@ -34,7 +34,7 @@ TRAIN_CONFIG = {
     "weight_decay": 1e-4,  
     "patience": 20,
     "min_delta": 1e-6,
-    "batch_size": 32,   
+    "batch_size": 4,   
     "time_step": DATA_LENGTH,
     "stride": 5000,
     "warmup_steps": 20,

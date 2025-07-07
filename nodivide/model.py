@@ -32,7 +32,6 @@ class IMUToTrajectoryNet(nn.Module):
             nn.LeakyReLU(negative_slope=0.1),
             nn.Dropout(self.config["dropout"]),
             nn.Linear(256, self.config["output_size"]),
-            AmplificationLayer()
         )
 
     def forward(self, x):
@@ -56,14 +55,3 @@ class IMUToTrajectoryNet(nn.Module):
             print(f"Error in forward pass: {str(e)}")
             print(f"Input shape: {x.shape}")
             raise
-
-class AmplificationLayer(nn.Module):
-    def __init__(self, initial_scale=0.5, learnable=True):
-        super().__init__()
-        self.scale = nn.Parameter(
-            torch.tensor(initial_scale), 
-            requires_grad=learnable
-        )
-    
-    def forward(self, x):
-        return x * (1.0 + torch.abs(self.scale))
