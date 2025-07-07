@@ -16,6 +16,7 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
     samples_pred = {}
     samples_targ = {}
     device = DEVICE
+    pict_num = 0
     
     with torch.no_grad():
         for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in tqdm.tqdm(enumerate(dataloader)):
@@ -33,20 +34,16 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
             total_loss += loss + traj_loss
             
             if plot and epoch is not None and epoch % 10 == 0:
-                sample_idx_list = sample_indices
-                window_idx_list = window_indices
-
-                for idx in sample_idx_list:
-                    if idx not in samples_pred:
-                        samples_pred[idx] = {}
-                        samples_targ[idx] = {}
-
-                masked_outputs = (outputs * masks)
-                masked_targets = (targets * masks)
-                
-                for i, (s_idx, w_idx) in enumerate(zip(sample_idx_list, window_idx_list)):
-                    samples_pred[s_idx][w_idx] = masked_outputs[i]
-                    samples_targ[s_idx][w_idx] = masked_targets[i]
+                if pict_num < 5: 
+                    for pred, targ, sample_idx, window_idx in zip(outputs, targets, sample_indices, window_indices):
+                        if pict_num >= 5: continue
+                        pict_num += 1
+                        if sample_idx not in samples_pred:
+                            samples_pred[sample_idx] = {}
+                            samples_targ[sample_idx] = {}
+                        samples_pred[sample_idx][window_idx] = pred.cpu().numpy()
+                        samples_targ[sample_idx][window_idx] = targ.cpu().numpy()
+                    
     
     # 所有样本的平均损失
     avg_loss = total_loss / len(dataloader)
@@ -57,17 +54,14 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
         os.makedirs(plot_dir, exist_ok=True)
         pict_num = 0
         for sample_idx, pred_windows in tqdm.tqdm(samples_pred.items()):
-            if pict_num >= 5: continue
-            pict_num += 1
-            pred_windows = pred_windows.cpu().numpy()
             sample_dir = os.path.join(plot_dir, f'sample_{sample_idx}')
             os.makedirs(sample_dir, exist_ok=True)
             window_indices = sorted(pred_windows.keys())
-            targ_windows = samples_targ[sample_idx].cpu().numpy
+            targ_windows = samples_targ[sample_idx]
             for window_idx in window_indices:
                 try:
                     img_path = os.path.join('trajectory_plots',f'sample_{sample_idx}', f'window_{window_idx}_epoch_{epoch}.png')
-                    draw_trajectory_plots(pred_windows, targ_windows, epoch, window_idx, sample_idx, img_path)
+                    draw_trajectory_plots(pred_windows[window_idx], targ_windows[window_idx], epoch, window_idx, sample_idx, img_path)
                     if os.path.exists(img_path):
                         wandb.log({f"trajectory_plot_{sample_idx}_{window_idx}": wandb.Image(img_path)})
                 except Exception as e:

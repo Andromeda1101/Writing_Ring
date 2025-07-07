@@ -43,15 +43,14 @@ def traject_loss(outputs, targets, position_weight=0.6, direction_weight=0.6):
     
     return total_loss
 
-def draw_trajectory_plots(pred_windows, targ_windows, epoch, window_idx, sample_idx, img_path):
+def draw_trajectory_plots(window_pred, window_targ, epoch, window_idx, sample_idx, img_path):
     window_size = TRAIN_CONFIG["time_step"]
     stride = TRAIN_CONFIG["stride"]
     
     plt.figure(figsize=(80, 100))
     plt.subplot(2, 1, 1)
     plt.title(f'Sample {sample_idx} Trajectory (Epoch {epoch}, Window {window_idx})')
-    window_pred = pred_windows[window_idx]
-    window_targ = targ_windows[window_idx]
+    
     window_pred_traj = speed2traj(window_pred)
     window_targ_traj = speed2traj(window_targ)
     plt.plot(window_pred_traj[:, 0], window_pred_traj[:, 1], 'r-', label='Predicted', alpha=0.5)
