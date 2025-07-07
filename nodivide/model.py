@@ -29,7 +29,6 @@ class IMUToTrajectoryNet(nn.Module):
         # 全连接层
         self.decoder = nn.Sequential(
             nn.Linear(self.config["hidden_size"] * 4, 256),
-            nn.BatchNorm1d(256),
             nn.LeakyReLU(negative_slope=0.1),
             nn.Dropout(self.config["dropout"]),
             nn.Linear(256, self.config["output_size"]),
