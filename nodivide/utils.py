@@ -11,7 +11,7 @@ def speed2traj(data, fps=200):
 def speed2point(data, fps=200):
     return torch.cumsum(data / fps, dim=1)
 
-def velocity_loss(outputs, target, masks, alpha=0.7):
+def velocity_loss(outputs, target, masks, alpha=0.3):
     outputs = outputs * masks
     mse_loss = F.mse_loss(outputs, target, reduction='sum') / (masks.sum() + 1e-8)
     
@@ -19,9 +19,9 @@ def velocity_loss(outputs, target, masks, alpha=0.7):
     target_dir = F.normalize(target, dim=-1)
     dir_loss = 1 - F.cosine_similarity(pred_dir, target_dir, dim=-1).mean()
     
-    return alpha * mse_loss + (1 - alpha) * dir_loss
+    return mse_loss + alpha * dir_loss
 
-def traject_loss(outputs, targets, position_weight=0.5, direction_weight=0.5):
+def traject_loss(outputs, targets, position_weight=0.6, direction_weight=0.6):
     outputs_traj = speed2point(outputs)
     targets_traj = speed2point(targets)
     

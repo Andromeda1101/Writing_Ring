@@ -33,16 +33,16 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
             total_loss += loss + traj_loss
             
             if plot and epoch is not None and epoch % 10 == 0:
-                sample_idx_list = sample_indices.cpu().numpy()
-                window_idx_list = window_indices.cpu().numpy()
+                sample_idx_list = sample_indices
+                window_idx_list = window_indices
 
                 for idx in sample_idx_list:
                     if idx not in samples_pred:
                         samples_pred[idx] = {}
                         samples_targ[idx] = {}
 
-                masked_outputs = (outputs * masks).cpu().numpy()
-                masked_targets = (targets * masks).cpu().numpy()
+                masked_outputs = (outputs * masks)
+                masked_targets = (targets * masks)
                 
                 for i, (s_idx, w_idx) in enumerate(zip(sample_idx_list, window_idx_list)):
                     samples_pred[s_idx][w_idx] = masked_outputs[i]
@@ -57,12 +57,13 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
         os.makedirs(plot_dir, exist_ok=True)
         pict_num = 0
         for sample_idx, pred_windows in tqdm.tqdm(samples_pred.items()):
-            if not is_test and (pict_num >= 5): continue
+            if pict_num >= 5: continue
             pict_num += 1
+            pred_windows = pred_windows.cpu().numpy()
             sample_dir = os.path.join(plot_dir, f'sample_{sample_idx}')
             os.makedirs(sample_dir, exist_ok=True)
             window_indices = sorted(pred_windows.keys())
-            targ_windows = samples_targ[sample_idx]
+            targ_windows = samples_targ[sample_idx].cpu().numpy
             for window_idx in window_indices:
                 try:
                     img_path = os.path.join('trajectory_plots',f'sample_{sample_idx}', f'window_{window_idx}_epoch_{epoch}.png')
