@@ -12,7 +12,6 @@ def speed2point(data, fps=200):
     return torch.cumsum(data / fps, dim=1)
 
 def velocity_loss(outputs, target, masks, alpha=0.3):
-    outputs = outputs * masks
     mse_loss = F.mse_loss(outputs, target, reduction='sum') / (masks.sum() + 1e-8)
     
     pred_dir = F.normalize(outputs, dim=-1)
@@ -50,7 +49,7 @@ def draw_trajectory_plots(window_pred, window_targ, epoch, window_idx, sample_id
     plt.figure(figsize=(80, 100))
     plt.subplot(2, 1, 1)
     plt.title(f'Sample {sample_idx} Trajectory (Epoch {epoch}, Window {window_idx})')
-    
+
     window_pred_traj = speed2traj(window_pred)
     window_targ_traj = speed2traj(window_targ)
     plt.plot(window_pred_traj[:, 0], window_pred_traj[:, 1], 'r-', label='Predicted', alpha=0.5)
