@@ -30,7 +30,7 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
             masks = masks.unsqueeze(-1).expand(-1, -1, 2)
             outputs = outputs * masks
             loss = velocity_loss(outputs, targets, masks)
-            traj_loss = traject_loss(outputs * masks, targets)
+            traj_loss = traject_loss(outputs, targets)
 
             total_loss += loss + traj_loss
             

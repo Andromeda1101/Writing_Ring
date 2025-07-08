@@ -14,13 +14,13 @@ def speed2point(data, fps=200):
 def velocity_loss(outputs, target, masks, alpha=0.8):
     mse_loss = F.mse_loss(outputs, target, reduction='sum') / (masks.sum() + 1e-8)
     
-    # pred_dir = F.normalize(outputs, dim=-1)
-    # target_dir = F.normalize(target, dim=-1)
-    # cos_loss = 1 - F.cosine_similarity(pred_dir, target_dir, dim=-1).mean()
+    pred_dir = F.normalize(outputs, dim=-1)
+    target_dir = F.normalize(target, dim=-1)
+    cos_loss = 1 - F.cosine_similarity(pred_dir, target_dir, dim=-1).mean()
     
-    return mse_loss
+    return alpha * mse_loss + (1-alpha) * cos_loss
 
-def traject_loss(outputs, targets, rel_weight=0.4, abs_weight=0.2, slope_weight=0.4):
+def traject_loss(outputs, targets, rel_weight=0.8, abs_weight=0.2):
     outputs_traj = speed2point(outputs)
     targets_traj = speed2point(targets)
     
@@ -31,23 +31,14 @@ def traject_loss(outputs, targets, rel_weight=0.4, abs_weight=0.2, slope_weight=
     )
     
     # 绝对位置损失
-    abs_loss = F.mse_loss(outputs_traj, targets_traj)
-    
-    # 相对斜率损失
-    pred_diff = outputs_traj[:, 1:] - outputs_traj[:, :-1]  # [B, T-1, 2]
-    target_diff = targets_traj[:, 1:] - targets_traj[:, :-1]  # [B, T-1, 2]
-    # 斜率
-    pred_slopes = pred_diff[..., 1] / (pred_diff[..., 0] + 1e-8)
-    target_slopes = target_diff[..., 1] / (target_diff[..., 0] + 1e-8)
-    # 斜率变化损失
-    pred_slope_changes = pred_slopes[:, 1:] - pred_slopes[:, :-1]   # [B, T-2]
-    target_slope_changes = target_slopes[:, 1:] - target_slopes[:, :-1]  # [B, T-2]
-    slope_loss = F.mse_loss(pred_slope_changes, target_slope_changes)
+    abs_position_def = outputs_traj - targets_traj
+    abs_position_def = abs_position_def[:, ::100]
+    zero_tensor = torch.zeros_like(abs_position_def)
+    abs_loss = F.smooth_l1_loss(abs_position_def, zero_tensor)
     
     total_loss = (
         rel_weight * rel_loss + 
-        abs_weight * abs_loss +
-        slope_weight * slope_loss
+        abs_weight * abs_loss
     )
     
     return total_loss

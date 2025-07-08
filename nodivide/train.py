@@ -33,7 +33,7 @@ def train(model, dataloader, optimizer, scheduler, device):
             # Check for NaN values in loss
             # if torch.isnan(loss).any():
             #     raise Exception("NaN detected in loss")
-            traj_loss = traject_loss(outputs * masks, targets)
+            traj_loss = traject_loss(outputs, targets)
             
             optimizer.zero_grad()
             loss = loss + traj_loss
