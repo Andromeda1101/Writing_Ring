@@ -5,8 +5,10 @@ from sklearn.model_selection import TimeSeriesSplit
 import torch
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
+from .utils import rotation_perturb
 from .config import DATA_DIR, SAVED_DATA_PATH, TRAIN_CONFIG
 from tqdm import tqdm
+import random
 
 class IMUTrajectoryDataset(Dataset):
     def __init__(self, data_dir=DATA_DIR, save_processed=True):
@@ -40,18 +42,17 @@ class IMUTrajectoryDataset(Dataset):
                             y_data[:, 1] = y_data[:, 1] * 14 * 200
 
                             # 平滑数据
-                            y_data = smooth_data(y_data)
+                            # y_data = smooth_data(y_data)
 
                             # 归一化
                             x_mean = np.mean(x_data, axis=0)
                             x_std = np.std(x_data, axis=0)
                             x_std[x_std == 0] = 1  # 防止除零
                             x_data = (x_data - x_mean) / x_std
-                            
-                            # 序列2张量
-                            x_tensor = torch.FloatTensor(x_data).contiguous()
-                            y_tensor = torch.FloatTensor(y_data).contiguous()
-                            m_tensor = torch.FloatTensor(m_data).contiguous()
+
+                            x_tensor = torch.FloatTensor(x_data)
+                            y_tensor = torch.FloatTensor(y_data)
+                            m_tensor = torch.FloatTensor(m_data)
                             
                             # 划分窗口
                             seq_len = len(x_tensor)
@@ -100,7 +101,20 @@ class IMUTrajectoryDataset(Dataset):
     def __getitem__(self, idx):
         return self.samples[idx]
 
-def collate_fn(batch):
+def train_collate_fn(batch):
+    for item in batch:
+        rand = random.randint(0, 10)
+        if rand <= 3:
+            item['x'] = rotation_perturb(item['x'])
+    inputs = torch.stack([item['x'] for item in batch])
+    targets = torch.stack([item['y'] for item in batch])
+    masks = torch.stack([item['m'] for item in batch])
+    sample_idx = torch.tensor([item['sample_idx'] for item in batch])
+    window_idx = torch.tensor([item['window_idx'] for item in batch])
+    
+    return inputs, targets, masks, sample_idx, window_idx
+
+def val_collate_fn(batch):
     inputs = torch.stack([item['x'] for item in batch])
     targets = torch.stack([item['y'] for item in batch])
     masks = torch.stack([item['m'] for item in batch])

@@ -1,7 +1,7 @@
 # train.py
 from sklearn.model_selection import TimeSeriesSplit
 import torch
-from .dataset import IMUTrajectoryDataset, collate_fn
+from .dataset import IMUTrajectoryDataset, train_collate_fn, val_collate_fn
 from .model import IMUToTrajectoryNet
 from .config import *
 from torch.utils.data import Subset
@@ -106,7 +106,7 @@ def train_model():
         train_dataset, 
         batch_size=TRAIN_CONFIG["batch_size"], 
         shuffle=True,
-        collate_fn=collate_fn,
+        collate_fn=train_collate_fn,
         num_workers=4,
         pin_memory=True
     )
@@ -115,7 +115,7 @@ def train_model():
         val_dataset,
         batch_size=TRAIN_CONFIG["batch_size"],
         shuffle=False,
-        collate_fn=collate_fn,
+        collate_fn=val_collate_fn,
         num_workers=4,
         pin_memory=True
     )
@@ -124,7 +124,7 @@ def train_model():
         test_dataset, 
         batch_size=TRAIN_CONFIG["batch_size"], 
         shuffle=False,
-        collate_fn=collate_fn,
+        collate_fn=val_collate_fn,
         num_workers=4,
         pin_memory=True
     )

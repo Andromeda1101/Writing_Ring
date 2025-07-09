@@ -20,7 +20,7 @@ DATA_LENGTH = 10000
 # 模型参数
 MODEL_CONFIG = {
     "input_size": 6,
-    "hidden_size": 512,  
+    "hidden_size": 256,  
     "num_layers": 3,    
     "output_size": 2,
     "length": DATA_LENGTH,
