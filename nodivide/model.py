@@ -10,17 +10,17 @@ class IMUToTrajectoryNet(nn.Module):
 
 
         self.gru = nn.GRU(
-            input_size=self.config["input_size"],
-            hidden_size=self.config["hidden_size"],
-            num_layers=self.config["num_layers"],
+            input_size=self.config.input_size,
+            hidden_size=self.config.hidden_size,
+            num_layers=self.config.num_layers,
             batch_first=True,
             bidirectional=True,
-            dropout=self.config["dropout"]
+            dropout=self.config.dropout
         )
         
         # 注意力层
         self.attention = nn.Sequential(
-            nn.Linear(self.config["hidden_size"] * 2, 128),
+            nn.Linear(self.config.hidden_size * 2, 128),
             nn.ReLU(),
             nn.Linear(128, 1),
             nn.Softmax(dim=1)
@@ -29,33 +29,33 @@ class IMUToTrajectoryNet(nn.Module):
         # 卷积层模块
         self.conv_block = nn.Sequential(
             nn.Conv1d(
-                in_channels=self.config["hidden_size"] * 4, 
-                out_channels=self.config["hidden_size"] * 2,  
+                in_channels=self.config.hidden_size * 4, 
+                out_channels=self.config.hidden_size * 2,  
                 kernel_size=5,
                 padding=2,
                 padding_mode='replicate'
             ),
             nn.LeakyReLU(negative_slope=0.1),
-            nn.LayerNorm([self.config["hidden_size"] * 2, self.config["length"]]),
+            nn.LayerNorm([self.config.hidden_size * 2, self.config.length]),
             
             nn.Conv1d(
-                in_channels=self.config["hidden_size"] * 2,
-                out_channels=self.config["hidden_size"] * 2,
+                in_channels=self.config.hidden_size * 2,
+                out_channels=self.config.hidden_size * 2,
                 kernel_size=3,
                 padding=1,
                 padding_mode='replicate'
             ),
             nn.LeakyReLU(negative_slope=0.1),
-            nn.LayerNorm([self.config["hidden_size"] * 2, self.config["length"]])
+            nn.LayerNorm([self.config.hidden_size * 2, self.config.length])
         )
         
         # 全连接层
         self.decoder = nn.Sequential(
             # nn.Linear(self.config["hidden_size"] * 6, 256),
-            nn.Linear(self.config["hidden_size"] * 4, 256),
+            nn.Linear(self.config.hidden_size * 4, 256),
             nn.LeakyReLU(negative_slope=0.1),
-            nn.Dropout(self.config["dropout"]),
-            nn.Linear(256, self.config["output_size"]),
+            nn.Dropout(self.config.dropout),
+            nn.Linear(256, self.config.output_size),
         )
 
     def forward(self, x):

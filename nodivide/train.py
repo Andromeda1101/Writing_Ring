@@ -11,7 +11,7 @@ import tqdm
 from torch.utils.data import Dataset, DataLoader
 from .validate import validate
 import numpy as np
-from .utils import velocity_loss, traject_loss
+from .utils import velocity_loss, traject_loss, class_to_dict
 
 def train(model, dataloader, optimizer, scheduler, device):
     model.train()
@@ -67,7 +67,7 @@ def train_model():
         torch.cuda.empty_cache()
         
     # 初始化wandb
-    wandb.init(project="imu-trajectory", config={**MODEL_CONFIG, **TRAIN_CONFIG})
+    wandb.init(project="imu-trajectory", config={**class_to_dict(MODEL_CONFIG), **class_to_dict(TRAIN_CONFIG)})
 
     # 加载数据集
     print(f'\nLoading data')
@@ -91,7 +91,10 @@ def train_model():
     
     val_indices = val_indices[val_indices < test_start]
     
-    train_dataset = torch.utils.data.Subset(full_dataset, train_indices)
+    np.random.shuffle(train_indices)
+    train_size = len(train_indices) * TRAIN_CONFIG.data_size
+    sub_train_indices = train_indices[:int(train_size)]
+    train_dataset = torch.utils.data.Subset(full_dataset, sub_train_indices)
     val_dataset = torch.utils.data.Subset(full_dataset, val_indices)
     test_dataset = torch.utils.data.Subset(full_dataset, range(test_start, total_size))
     
@@ -104,7 +107,7 @@ def train_model():
     # 创建数据加载器
     train_loader = DataLoader(
         train_dataset, 
-        batch_size=TRAIN_CONFIG["batch_size"], 
+        batch_size=TRAIN_CONFIG.batch_size, 
         shuffle=True,
         collate_fn=train_collate_fn,
         num_workers=4,
@@ -113,7 +116,7 @@ def train_model():
 
     val_loader = DataLoader(
         val_dataset,
-        batch_size=TRAIN_CONFIG["batch_size"],
+        batch_size=TRAIN_CONFIG.batch_size,
         shuffle=False,
         collate_fn=val_collate_fn,
         num_workers=4,
@@ -122,7 +125,7 @@ def train_model():
 
     test_loader = DataLoader(
         test_dataset, 
-        batch_size=TRAIN_CONFIG["batch_size"], 
+        batch_size=TRAIN_CONFIG.batch_size, 
         shuffle=False,
         collate_fn=val_collate_fn,
         num_workers=4,
@@ -134,17 +137,17 @@ def train_model():
     
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=TRAIN_CONFIG["lr"],
-        weight_decay=TRAIN_CONFIG["weight_decay"]
+        lr=TRAIN_CONFIG.lr,
+        weight_decay=TRAIN_CONFIG.weight_decay
     )
 
     # 学习率调度器
-    warmup_steps = TRAIN_CONFIG["warmup_steps"]
-    total_steps = TRAIN_CONFIG["epochs"]
+    warmup_steps = TRAIN_CONFIG.warmup_steps
+    total_steps = TRAIN_CONFIG.epochs
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
-        max_lr=TRAIN_CONFIG["lr"],
-        epochs=TRAIN_CONFIG["epochs"],
+        max_lr=TRAIN_CONFIG.lr,
+        epochs=TRAIN_CONFIG.epochs,
         steps_per_epoch=len(train_loader),
         pct_start=0.05, 
         anneal_strategy='cos',
@@ -153,10 +156,10 @@ def train_model():
     )
 
     best_val_loss = float('inf')
-    patience = TRAIN_CONFIG["patience"]
+    patience = TRAIN_CONFIG.patience
     patience_counter = 0
     
-    for epoch in range(TRAIN_CONFIG["epochs"]):
+    for epoch in range(TRAIN_CONFIG.epochs):
         print("")        
         
         train_loss = train(model, train_loader, optimizer, scheduler, DEVICE)
@@ -164,7 +167,7 @@ def train_model():
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), 'best_masked_model.pth')
+            torch.save(model.state_dict(), MODEL_SAVE_PATH)
             patience_counter = 0
         else:
             patience_counter += 1
@@ -174,7 +177,7 @@ def train_model():
             print(f"Early stopping triggered after {epoch + 1} epochs")
             break
             
-        print(f'Epoch [{epoch+1}/{TRAIN_CONFIG["epochs"]}], '
+        print(f'Epoch [{epoch+1}/{TRAIN_CONFIG.epochs}], '
               f'Train Loss: {train_loss:.8f}, Val Loss: {val_loss:.8f}')
         
         wandb.log({
@@ -186,12 +189,12 @@ def train_model():
         })
     
     # model.load_state_dict(torch.load('best_masked_model.pth'))
-    test_loss = validate(model, test_loader, plot=True, is_test=True)
+    test_loss = validate(None, test_loader, plot=True, is_test=True)
     print(f'Final Test Loss: {test_loss:.8f}')
     wandb.log({"final_test_loss": test_loss})
 
     wandb.finish()
-    torch.save(model.state_dict(), MODEL_SAVE_PATH)
+    torch.save(model.state_dict(), 'nodivide/final_model.pth')
 
 if __name__ == "__main__":
     train_model()

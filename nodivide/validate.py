@@ -45,7 +45,6 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
                         samples_pred[sample_idx][window_idx] = pred.cpu().numpy()
                         samples_targ[sample_idx][window_idx] = targ.cpu().numpy()
                     
-    
     # 所有样本的平均损失
     avg_loss = total_loss / len(dataloader)
     wandb.log({"val_loss": avg_loss})

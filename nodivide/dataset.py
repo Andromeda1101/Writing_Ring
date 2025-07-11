@@ -14,8 +14,8 @@ class IMUTrajectoryDataset(Dataset):
     def __init__(self, data_dir=DATA_DIR, save_processed=True):
         self.data_dir = data_dir
         self.samples = []
-        self.window_size = TRAIN_CONFIG["time_step"]
-        self.stride = TRAIN_CONFIG["stride"]
+        self.window_size = TRAIN_CONFIG.time_step
+        self.stride = TRAIN_CONFIG.stride
         self._load_or_process_data(save_processed)
 
     def _process_data(self):
@@ -42,13 +42,13 @@ class IMUTrajectoryDataset(Dataset):
                             y_data[:, 1] = y_data[:, 1] * 14 * 200
 
                             # 平滑数据
-                            # y_data = smooth_data(y_data)
+                            y_data = smooth_data(y_data)
 
                             # 归一化
-                            x_mean = np.mean(x_data, axis=0)
-                            x_std = np.std(x_data, axis=0)
-                            x_std[x_std == 0] = 1  # 防止除零
-                            x_data = (x_data - x_mean) / x_std
+                            # x_mean = np.mean(x_data, axis=0)
+                            # x_std = np.std(x_data, axis=0)
+                            # x_std[x_std == 0] = 1  # 防止除零
+                            # x_data = (x_data - x_mean) / x_std
 
                             x_tensor = torch.FloatTensor(x_data)
                             y_tensor = torch.FloatTensor(y_data)
@@ -106,6 +106,12 @@ def train_collate_fn(batch):
         rand = random.randint(0, 10)
         if rand <= 3:
             item['x'] = rotation_perturb(item['x'])
+        # 归一化
+        x_mean = torch.mean(item['x'], dim=0)
+        x_std = torch.std(item['x'], dim=0)
+        x_std[x_std == 0] = 1  # 防止除零
+        item['x'] = (item['x'] - x_mean) / x_std
+
     inputs = torch.stack([item['x'] for item in batch])
     targets = torch.stack([item['y'] for item in batch])
     masks = torch.stack([item['m'] for item in batch])
