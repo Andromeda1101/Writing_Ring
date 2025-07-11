@@ -21,13 +21,13 @@ def velocity_loss(outputs, target, masks, alpha=0.8):
     
     return mse_loss * alpha + (1-alpha) * cos_loss
 
-def traject_loss(outputs, targets, rel_weight=0.8, abs_weight=0.2, dir_weight=0.6):
+def traject_loss(outputs, targets, rel_weight=0.5, abs_weight=0.3, dir_weight=0.3):
     outputs_traj = speed2point(outputs)
     targets_traj = speed2point(targets)
     
     # 相对位移损失
-    rel_outputs_traj = outputs_traj[:, 1:] - outputs_traj[:, :-1]
-    rel_targets_traj = targets_traj[:, 1:] - targets_traj[:, :-1]
+    rel_outputs_traj = torch.diff(outputs_traj, dim=1)
+    rel_targets_traj = torch.diff(targets_traj, dim=1)
     rel_loss_x = F.mse_loss(rel_outputs_traj[..., 0], rel_targets_traj[..., 0])
     rel_loss_y = F.mse_loss(rel_outputs_traj[..., 1], rel_targets_traj[..., 1])
     rel_loss = rel_loss_x + rel_loss_y
@@ -37,17 +37,15 @@ def traject_loss(outputs, targets, rel_weight=0.8, abs_weight=0.2, dir_weight=0.
     #     rel_loss = rel_loss_x + rel_loss_y * 1.2
     
     # 绝对位置损失
-    # abs_loss = F.smooth_l1_loss(outputs_traj[:, ::100], targets_traj[:, ::100])
+    abs_loss = F.smooth_l1_loss(outputs_traj, targets_traj)
 
     # 方向损失
-    # outputs_dir = outputs_traj[:, 1:] - outputs_traj[:, :-1]
-    # targets_dir = targets_traj[:, 1:] - targets_traj[:, :-1]
-    # direction_loss = 1 - F.cosine_similarity(outputs_dir, targets_dir, dim=-1).mean()
+    direction_loss = 1 - F.cosine_similarity(rel_outputs_traj, rel_targets_traj, dim=-1).mean()
     
     total_loss = (
         rel_weight * rel_loss 
-        # + abs_weight * abs_loss
-        # + dir_weight * direction_loss
+        + abs_weight * abs_loss
+        + dir_weight * direction_loss
     )
     
     return total_loss

@@ -20,11 +20,11 @@ DATA_LENGTH = 10000
 # 模型参数
 class MODEL_CONFIG:
     input_size = 6
-    hidden_size = 256
+    hidden_size = 128
     num_layers = 3
     output_size = 2
     length = DATA_LENGTH
-    dropout = 0.2
+    dropout = 0.3
 
 # 训练参数
 class TRAIN_CONFIG:
@@ -39,4 +39,4 @@ class TRAIN_CONFIG:
     warmup_steps = 10
     grad_weight = 2.0
     dist_weight = 0.6
-    data_size = 0.2
+    data_size = 1.0

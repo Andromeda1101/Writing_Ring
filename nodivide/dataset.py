@@ -103,9 +103,9 @@ class IMUTrajectoryDataset(Dataset):
 
 def train_collate_fn(batch):
     for item in batch:
-        rand = random.randint(0, 10)
-        if rand <= 3:
-            item['x'] = rotation_perturb(item['x'])
+        # rand = random.randint(0, 10)
+        # if rand <= 3:
+        #     item['x'] = rotation_perturb(item['x'])
         # 归一化
         x_mean = torch.mean(item['x'], dim=0)
         x_std = torch.std(item['x'], dim=0)
@@ -121,6 +121,11 @@ def train_collate_fn(batch):
     return inputs, targets, masks, sample_idx, window_idx
 
 def val_collate_fn(batch):
+    for item in batch:
+        x_mean = torch.mean(item['x'], dim=0)
+        x_std = torch.std(item['x'], dim=0)
+        x_std[x_std == 0] = 1  # 防止除零
+        item['x'] = (item['x'] - x_mean) / x_std
     inputs = torch.stack([item['x'] for item in batch])
     targets = torch.stack([item['y'] for item in batch])
     masks = torch.stack([item['m'] for item in batch])
