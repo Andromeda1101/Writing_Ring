@@ -5,8 +5,9 @@ DATA_DIR = "data/frame_standard_delete_g"
 GAN_DATA_PATH = "gan_processed_data.pth"
 VAE_DATA_PATH = "vae_processed_data.pth"
 SAMPLES_PATH = "generate_samples"
-GENERATOR_PATH = "GAN/imu_generator.pth"
-DISCRIMINATOR_PATH = "GAN/imu_discriminator.pth"
+GENERATOR_PATH = "imu_generator.pth"
+DISCRIMINATOR_PATH = "imu_discriminator.pth"
+VAE_PICT_DIR = "vae_pict"
 SEQ_LENGTH = 10000
 STRIDE = 5000
 

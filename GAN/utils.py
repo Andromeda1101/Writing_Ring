@@ -1,6 +1,8 @@
+import os
 from matplotlib import pyplot as plt
 from .model import *
 from torch.utils.data import Dataset, DataLoader, TensorDataset
+from nodivide.utils import speed2traj
 
 
 def augment_data(generator, original_vel, num_samples):
@@ -43,17 +45,42 @@ def vae_loss_function(x, recon_x, mu, logvar):
     BCE = nn.functional.binary_cross_entropy(recon_x, x, reduction='sum') # 计算重构误差，对应论文中的$-\log p_{\theta}(x|z)$，注意BCE loss本身前面有个负号
     return KLD + BCE
 
-def draw_vae_samples(model, dataloader):
+def draw_vae_samples(model, epoch, dataloader):
     recon_batch = []
+    target_batch = []
     with torch.no_grad():
         for v in dataloader:
             z = model.encoder(v)
             recon_batch = model.decode(z)
+            target_batch = v.view(-1, -1, 2).cpu().numpy()
             recon_batch = recon_batch.view(-1, -1, 2).cpu().numpy()
 
-    plt.figure(figsize=(15, 3))
-    for i in range(5):
-        plt.subplot(1, len(recon_batch), i+1)
-        plt.imshow(recon_batch[i], cmap='gray')
-        plt.axis('off')
-    plt.show()
+    for i, (recon, targ) in enumerate(zip(recon_batch, target_batch)):
+        plt.figure(figsize=(80, 100))
+        plt.subplot(2, 1, 1)
+        recon_traj = speed2traj(recon)
+        targ_traj = speed2traj(targ)
+        plt.plot(recon_traj[:, 0], recon_traj[:, 1], 'r-', label='Predicted', alpha=0.5)
+        plt.plot(targ_traj[:, 0], targ_traj[:, 1], 'b-', label='Ground Truth', alpha=0.5)
+        plt.xlabel('X Position')
+        plt.ylabel('Y Position')
+        plt.legend()
+
+        plt.subplot(4, 1, 3)
+        time_steps = VAEConfig.seq_length
+        plt.plot(time_steps, recon[:, 0], 'r-', label='Predicted', alpha=0.5)
+        plt.plot(time_steps, targ[:, 0], 'b-', label='Ground Truth', alpha=0.5)
+        plt.xlabel('Time Step')
+        plt.ylabel('X')
+        plt.legend()
+
+        plt.subplot(4, 1, 4)
+        plt.plot(time_steps, recon[:, 1], 'r-', label='Predicted', alpha=0.5)
+        plt.plot(time_steps, targ[:, 1], 'b-', label='Ground Truth', alpha=0.5)
+        plt.xlabel('Time Step') 
+        plt.ylabel('Y')
+        plt.legend()
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(VAE_PICT_DIR, f"epoch_{epoch}_sample_{i}.png"))
+        plt.close()

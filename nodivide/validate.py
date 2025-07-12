@@ -13,7 +13,7 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
         model.to(DEVICE)
     model.eval()
     total_loss = 0.0
-    total_valid_points = 0.0
+    total_samples = 0.0
     samples_pred = {}
     samples_targ = {}
     device = DEVICE
@@ -31,10 +31,10 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
             masks = masks.unsqueeze(-1).expand(-1, -1, 2)
             outputs = outputs * masks
             vel_loss = velocity_loss(outputs, targets, valid_num)
-            traj_loss = traject_loss(outputs, targets)
+            traj_loss = traject_loss(outputs, targets, valid_num)
             loss = vel_loss + traj_loss
-            total_loss += loss.item() * masks.sum().item()
-            total_valid_points += masks.sum().item()
+            total_loss += loss.item()
+            total_samples += inputs.shape[0]
             
             if plot and epoch is not None and epoch % 10 == 0:
                 if pict_num < 5: 
@@ -48,7 +48,7 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
                         samples_targ[sample_idx][window_idx] = targ.cpu().numpy()
                     
     # 所有样本的平均损失
-    avg_loss = total_loss / total_valid_points
+    avg_loss = total_loss / total_samples
     wandb.log({"val_loss": avg_loss})
     
     if plot and epoch is not None and epoch % 10 == 0:

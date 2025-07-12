@@ -95,40 +95,38 @@ def speed2point(data, fps=200):
 
 def velocity_loss(outputs, target, valid_num, alpha=0.8):
     mse_loss = F.mse_loss(outputs, target, reduction='sum') / (valid_num + 1e-8)
-    
-    pred_dir = F.normalize(outputs, dim=-1)
-    target_dir = F.normalize(target, dim=-1)
-    cos_loss = 1 - F.cosine_similarity(pred_dir, target_dir, dim=-1).mean()
-    
-    return mse_loss * alpha + (1-alpha) * cos_loss
 
-def traject_loss(outputs, targets, rel_weight=0.5, abs_weight=0.6, dir_weight=0.3):
+    # pred_dir = F.normalize(outputs, dim=-1)
+    # target_dir = F.normalize(target, dim=-1)
+    # cos_loss = 1 - F.cosine_similarity(pred_dir, target_dir, dim=-1).mean()
+    
+    return mse_loss # * alpha + (1-alpha) * cos_loss
+
+def traject_loss(outputs, targets, valid_num, rel_weight=1.0, abs_weight=1.0, dir_weight=0.3):
     outputs_traj = speed2point(outputs)
     targets_traj = speed2point(targets)
     
     # 相对位移损失
     rel_outputs_traj = torch.diff(outputs_traj, dim=1)
     rel_targets_traj = torch.diff(targets_traj, dim=1)
-    rel_loss_x = F.mse_loss(rel_outputs_traj[..., 0], rel_targets_traj[..., 0])
-    rel_loss_y = F.mse_loss(rel_outputs_traj[..., 1], rel_targets_traj[..., 1])
-    rel_loss = rel_loss_x + rel_loss_y
+    rel_loss = F.mse_loss(rel_outputs_traj, rel_targets_traj, reduction="sum") / (valid_num + 1e-8)
     # if rel_loss_x > rel_loss_y:
     #     rel_loss = rel_loss_x * 1.5 + rel_loss_y
     # else:
     #     rel_loss = rel_loss_x + rel_loss_y * 1.2
     
     # 绝对位置损失
-    abs_loss = F.smooth_l1_loss(outputs_traj, targets_traj)
+    abs_loss = F.mse_loss(outputs_traj, targets_traj, reduction="sum") / (valid_num + 1e-8)
 
     # 方向损失
-    direction_loss = 1 - F.cosine_similarity(rel_outputs_traj, rel_targets_traj, dim=-1).mean()
+    # direction_loss = 1 - F.cosine_similarity(rel_outputs_traj, rel_targets_traj, dim=-1).mean()
     
     total_loss = (
         rel_weight * rel_loss 
         + abs_weight * abs_loss
-        + dir_weight * direction_loss
+        # + dir_weight * direction_loss
     )
-    return total_loss.mean()
+    return total_loss
 
 def draw_trajectory_plots(window_pred, window_targ, epoch, window_idx, sample_idx, img_path):
     window_size = TRAIN_CONFIG.time_step

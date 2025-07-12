@@ -16,7 +16,7 @@ from .utils import velocity_loss, traject_loss, class_to_dict
 def train(model, dataloader, optimizer, scheduler, device):
     model.train()
     total_loss = 0.0
-    total_valid_points = 0.0
+    total_samples = 0.0
     
     for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in tqdm.tqdm(enumerate(dataloader)):
         try:
@@ -34,7 +34,7 @@ def train(model, dataloader, optimizer, scheduler, device):
             # Check for NaN values in loss
             # if torch.isnan(loss).any():
             #     raise Exception("NaN detected in loss")
-            traj_loss = traject_loss(outputs, targets)
+            traj_loss = traject_loss(outputs, targets, valid_num)
             
             optimizer.zero_grad()
             loss = vel_loss + traj_loss
@@ -43,8 +43,8 @@ def train(model, dataloader, optimizer, scheduler, device):
             optimizer.step()
             scheduler.step()
             
-            total_loss += loss.item() * masks.sum().item()
-            total_valid_points += masks.sum().item()
+            total_loss += loss.item()
+            total_samples += inputs.shape[0]
             
             wandb.log({
                 "batch_loss": loss.item(),
@@ -62,7 +62,7 @@ def train(model, dataloader, optimizer, scheduler, device):
             raise
 
     # 返回所有样本的平均损失
-    avg_loss = total_loss / total_valid_points
+    avg_loss = total_loss / total_samples
     wandb.log({"train_loss": avg_loss})
     return avg_loss
 
