@@ -3,19 +3,15 @@ import torch.nn as nn
 import numpy as np
 from .config import *
 
-torch.manual_seed(42)
-np.random.seed(42)
-
-config = GANConfig()
-
+# GAN
 class Generator(nn.Module):
-    def __init__(self, config):
+    def __init__(self):
         super(Generator, self).__init__()
-        self.config = config
+        self.config = GANConfig()
         
         # (noise_dim + vel_dim)
         self.fc = nn.Sequential(
-            nn.Linear(config.noise_dim + config.vel_dim, 128),
+            nn.Linear(self.config.noise_dim + self.config.vel_dim, 128),
             nn.ReLU(),
             nn.Linear(128, 256),
             nn.ReLU(),
@@ -37,7 +33,7 @@ class Generator(nn.Module):
             nn.BatchNorm1d(64),
             nn.ReLU(),
             
-            nn.ConvTranspose1d(64, config.imu_dim, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose1d(64, self.config.imu_dim, kernel_size=4, stride=2, padding=1),
             nn.Tanh()
         )
         
@@ -58,17 +54,17 @@ class Generator(nn.Module):
         imu_fake = self.deconv(x)
         
         # 裁剪
-        start_idx = (imu_fake.size(2) - config.seq_length) // 2
-        return imu_fake[:, :, start_idx:start_idx + config.seq_length]
+        start_idx = (imu_fake.size(2) - self.config.seq_length) // 2
+        return imu_fake[:, :, start_idx:start_idx + self.config.seq_length]
 
 class Discriminator(nn.Module):
-    def __init__(self, config):
+    def __init__(self):
         super(Discriminator, self).__init__()
-        self.config = config
+        self.config = GANConfig()
         
         self.imu_conv = nn.Sequential(
             # (batch, imu_dim, seq_length)
-            nn.Conv1d(config.imu_dim, 64, kernel_size=4, stride=2, padding=1),
+            nn.Conv1d(self.config.imu_dim, 64, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2),
             
             nn.Conv1d(64, 128, kernel_size=4, stride=2, padding=1),
@@ -85,13 +81,13 @@ class Discriminator(nn.Module):
         )
         
         self.condition_fc = nn.Sequential(
-            nn.Linear(config.vel_dim, 128),
+            nn.Linear(self.config.vel_dim, 128),
             nn.LeakyReLU(0.2),
             nn.Linear(128, 512),
             nn.LeakyReLU(0.2)
         )
         
-        self.conv_length = config.seq_length
+        self.conv_length = self.config.seq_length
         for _ in range(4): 
             self.conv_length = (self.conv_length + 2 - 4) // 2 + 1
         
@@ -113,3 +109,60 @@ class Discriminator(nn.Module):
         
         validity = self.fc(combined)
         return validity
+
+# VAE 
+class Encoder(nn.Module):
+    def __init__(self, input_dim, hidden_dim, latent_dim):
+        super(Encoder, self).__init__()
+
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim * 2),
+            nn.Tanh(),
+            nn.Linear(hidden_dim * 2, hidden_dim),
+        )
+
+        self.fc_mu = nn.Linear(hidden_dim, latent_dim)
+        self.fc_logvar = nn.Linear(hidden_dim, latent_dim)
+    
+    def forward(self, x):
+        h = self.encoder(x)
+        return self.fc_mu(h), self.fc_logvar(h)
+
+class Decoder(nn.Module):
+    def __init__(self, input_dim, hidden_dim, latent_dim):
+        super(Decoder, self).__init__()
+
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim * 2),
+            nn.Tanh(),
+            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, input_dim),
+            nn.Sigmoid()
+        )
+
+    def forward(self, z):
+        return self.decoder(z)
+
+class VAE(nn.Module):
+    def __init__(self):
+        super(VAE, self).__init__()
+        self.config = VAEConfig()
+        self.encoder = Encoder(self.config.input_dim, self.config.hidden_dim, self.config.latent_dim)
+        self.decoder = Decoder(self.config.input_dim, self.config.hidden_dim, self.config.latent_dim)
+    
+    def encode(self, x):
+        return self.encoder(x)
+
+    def decode(self, z):
+        return self.decoder(z)
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar) # 计算标准差, std = sqrt(var) = sqrt(exp(logvar)) = exp(logvar/2)
+        epsilon = torch.randn_like(std, requires_grad=False) # 从标准正态分布中采样epsilon
+        return mu + epsilon * std
+
+    def forward(self, x):
+        mu, logvar = self.encoder(x)
+        z = self.reparameterize(mu, logvar)
+        return self.decoder(z), mu, logvar

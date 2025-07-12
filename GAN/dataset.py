@@ -1,19 +1,34 @@
+import os
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from .config import *
 import numpy as np
+from tqdm import tqdm
+from nodivide.utils import smooth_data
+from nodivide.dataset import IMUTrajectoryDataset
 
-class IMUDataset(Dataset):
-        def __init__(self, num_samples=1000):
-            self.num_samples = num_samples
-            self.config = GANConfig()
-            self.seq_length = self.config.seq_length
-            
-            # 生成模拟数据 (实际应用中应替换为真实数据)
-            self.imu_data = np.random.randn(num_samples, self.config.imu_dim, self.seq_length).astype(np.float32)
-            self.velocity_data = np.random.randn(num_samples, self.config.vel_dim).astype(np.float32)
-            
-        def __len__(self):
-            return self.num_samples
+class GANDataset(Dataset):
+    def __init__(self):
+        self.config = GANConfig()
+        self.seq_length = self.config.seq_length
+        pre_data = IMUTrajectoryDataset()
+        self.data = [(item['x'], item['y']) for item in pre_data]
         
-        def __getitem__(self, idx):
-            return self.imu_data[idx], self.velocity_data[idx]
+    def __len__(self):
+        return self.seq_length
+    
+    def __getitem__(self, idx):
+        return self.data[idx][0], self.data[idx][1]
+        
+class VAEDataset(Dataset):
+    def __init__(self):
+        self.config = VAEConfig()
+        self.seq_length = self.config.seq_length
+        data = IMUTrajectoryDataset()
+        self.velocity_data = [item['y'] for item in data]
+        
+    def __len__(self):
+        return self.seq_length
+    
+    def __getitem__(self, idx):
+        return self.velocity_data[idx]
+    

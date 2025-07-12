@@ -1,5 +1,5 @@
 # train.py
-from sklearn.model_selection import TimeSeriesSplit
+import random
 import torch
 from .dataset import IMUTrajectoryDataset, train_collate_fn, val_collate_fn
 from .model import IMUToTrajectoryNet
@@ -16,6 +16,7 @@ from .utils import velocity_loss, traject_loss, class_to_dict
 def train(model, dataloader, optimizer, scheduler, device):
     model.train()
     total_loss = 0.0
+    total_valid_points = 0.0
     
     for batch_idx, (inputs, targets, masks, sample_indices, window_indices) in tqdm.tqdm(enumerate(dataloader)):
         try:
@@ -29,21 +30,27 @@ def train(model, dataloader, optimizer, scheduler, device):
             valid_num = masks.sum()
             masks = masks.unsqueeze(-1).expand(-1, -1, 2)
             outputs = outputs * masks
-            loss = velocity_loss(outputs, targets, masks)
+            vel_loss = velocity_loss(outputs, targets, valid_num)
             # Check for NaN values in loss
             # if torch.isnan(loss).any():
             #     raise Exception("NaN detected in loss")
             traj_loss = traject_loss(outputs, targets)
             
             optimizer.zero_grad()
-            loss = loss + traj_loss
+            loss = vel_loss + traj_loss
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             scheduler.step()
             
-            total_loss += loss.sum()
-            wandb.log({"batch_loss": loss.sum() / valid_num})
+            total_loss += loss.item() * masks.sum().item()
+            total_valid_points += masks.sum().item()
+            
+            wandb.log({
+                "batch_loss": loss.item(),
+                "velocity_loss": vel_loss.item(),
+                "traject_loss": traj_loss.item()
+            })
             
             # 显示进度
             # if (batch_idx + 1) % progress_interval == 0:
@@ -55,7 +62,7 @@ def train(model, dataloader, optimizer, scheduler, device):
             raise
 
     # 返回所有样本的平均损失
-    avg_loss = total_loss / len(dataloader)
+    avg_loss = total_loss / total_valid_points
     wandb.log({"train_loss": avg_loss})
     return avg_loss
 
@@ -65,41 +72,31 @@ def train(model, dataloader, optimizer, scheduler, device):
 def train_model():
     if DEVICE.type == 'cuda':
         torch.cuda.empty_cache()
-        
+    random.seed(42)
+    torch.manual_seed(42)
     # 初始化wandb
     wandb.init(project="imu-trajectory", config={**class_to_dict(MODEL_CONFIG), **class_to_dict(TRAIN_CONFIG)})
 
     # 加载数据集
     print(f'\nLoading data')
     full_dataset = IMUTrajectoryDataset()
-    total_size = len(full_dataset)
+    indices = list(range(len(full_dataset)))
+    random.shuffle(indices)
     
-    # 使用TimeSeriesSplit进行数据集划分
-    tscv = TimeSeriesSplit(n_splits=5)  # 5折交叉验证
-    
-    # 获取最后一次划分的索引
-    train_indices = None
-    val_indices = None
-    for train_idx, val_idx in tscv.split(range(total_size)):
-        train_indices = train_idx
-        val_indices = val_idx
-    
-    assert train_indices is not None and val_indices is not None
-    
-    test_size = int(0.1 * total_size)
-    test_start = total_size - test_size
-    
-    val_indices = val_indices[val_indices < test_start]
-    
-    np.random.shuffle(train_indices)
-    train_size = len(train_indices) * TRAIN_CONFIG.data_size
-    sub_train_indices = train_indices[:int(train_size)]
-    train_dataset = torch.utils.data.Subset(full_dataset, sub_train_indices)
-    val_dataset = torch.utils.data.Subset(full_dataset, val_indices)
-    test_dataset = torch.utils.data.Subset(full_dataset, range(test_start, total_size))
+    test_size = int(0.1 * len(indices))
+    val_size = int(0.1 * len(indices))
+    train_size = len(indices) - test_size - val_size
+
+    train_indices = indices[:train_size]
+    val_indices = indices[train_size:train_size + val_size]
+    test_indices = indices[train_size + val_size:]
+
+    train_dataset = Subset(full_dataset, train_indices)
+    val_dataset = Subset(full_dataset, val_indices)
+    test_dataset = Subset(full_dataset, test_indices)
     
     print(f'\nSplitting dataset:')
-    print(f'Total samples: {total_size}')
+    print(f'Total samples: {len(full_dataset)}')
     print(f'Training samples: {len(train_dataset)}')
     print(f'Validation samples: {len(val_dataset)}')
     print(f'Testing samples: {len(test_dataset)}')

@@ -9,10 +9,11 @@ from .utils import velocity_loss, traject_loss, draw_trajectory_plots
 def validate(model, dataloader, epoch=0, plot=True, is_test=False):
     if model is None:
         model = IMUToTrajectoryNet()
-        model.load_state_dict(torch.load(MODEL_SAVE_PATH, map_location=DEVICE))
+        model.load_state_dict(torch.load(MODEL_SAVE_PATH, map_location=DEVICE, weights_only=True))
         model.to(DEVICE)
     model.eval()
     total_loss = 0.0
+    total_valid_points = 0.0
     samples_pred = {}
     samples_targ = {}
     device = DEVICE
@@ -29,10 +30,11 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
             valid_num = masks.sum()
             masks = masks.unsqueeze(-1).expand(-1, -1, 2)
             outputs = outputs * masks
-            loss = velocity_loss(outputs, targets, masks)
+            vel_loss = velocity_loss(outputs, targets, valid_num)
             traj_loss = traject_loss(outputs, targets)
-
-            total_loss += loss + traj_loss
+            loss = vel_loss + traj_loss
+            total_loss += loss.item() * masks.sum().item()
+            total_valid_points += masks.sum().item()
             
             if plot and epoch is not None and epoch % 10 == 0:
                 if pict_num < 5: 
@@ -46,7 +48,7 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
                         samples_targ[sample_idx][window_idx] = targ.cpu().numpy()
                     
     # 所有样本的平均损失
-    avg_loss = total_loss / len(dataloader)
+    avg_loss = total_loss / total_valid_points
     wandb.log({"val_loss": avg_loss})
     
     if plot and epoch is not None and epoch % 10 == 0:

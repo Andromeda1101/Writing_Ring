@@ -1,13 +1,17 @@
 import os
+import random
 from .model import *
 from .config import *
-from .dataset import IMUDataset
+from .dataset import GANDataset, VAEDataset
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 import torch.optim as optim
+from torch.utils.data import Subset
 import numpy as np
 import matplotlib.pyplot as plt
+from .utils import vae_loss_function, draw_vae_samples
+from tqdm import tqdm
 
-def train(generator, discriminator, dataloader, optimizer_G, optimizer_D, adversarial_loss):
+def train_gan(generator, discriminator, dataloader, optimizer_G, optimizer_D, adversarial_loss):
     total_g_loss = 0.0
     total_d_loss = 0.0
     for batch_idx, (real_imu, real_vel) in enumerate(dataloader):
@@ -23,7 +27,7 @@ def train(generator, discriminator, dataloader, optimizer_G, optimizer_D, advers
         real_vel = real_vel.to(DEVICE)
         real_loss = adversarial_loss(discriminator(real_imu, real_vel), valid)
         # 假样本
-        z = torch.randn(batch_size, config.noise_dim, device=DEVICE)
+        z = torch.randn(batch_size, GANConfig.noise_dim, device=DEVICE)
         fake_imu = generator(z, real_vel)
         fake_loss = adversarial_loss(discriminator(fake_imu.detach(), real_vel), fake)
         # 判别器损失
@@ -44,19 +48,26 @@ def train(generator, discriminator, dataloader, optimizer_G, optimizer_D, advers
     avg_g_loss = total_g_loss / len(dataloader)
     avg_d_loss = total_d_loss / len(dataloader)
 
-def train_model():
-    generator = Generator(config).to(DEVICE)
-    discriminator = Discriminator(config).to(DEVICE)
+    return avg_g_loss, avg_d_loss
+
+def train_gan_model():
+    torch.manual_seed(42)
+    np.random.seed(42)
+
+    config = GANConfig()
+
+    generator = Generator().to(DEVICE)
+    discriminator = Discriminator().to(DEVICE)
 
     # 损失和优化器
     adversarial_loss = nn.BCELoss()
     optimizer_G = optim.Adam(generator.parameters(), lr=config.lr)
     optimizer_D = optim.Adam(discriminator.parameters(), lr=config.lr)
-    dataset = IMUDataset(num_samples=5000)
+    dataset = GANDataset(num_samples=5000)
     dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
     for epoch in range(config.epochs):
-        g_loss, d_loss = train(generator, discriminator, dataloader, optimizer_G, optimizer_D, adversarial_loss)
+        g_loss, d_loss = train_gan(generator, discriminator, dataloader, optimizer_G, optimizer_D, adversarial_loss)
             
         print(f"[Epoch {epoch}/{config.epochs}] [D loss: {d_loss.item():.4f}] [G loss: {g_loss.item():.4f}]")
         
@@ -82,3 +93,63 @@ def train_model():
     # 保存模型
     torch.save(generator.state_dict(), GENERATOR_PATH)
     torch.save(discriminator.state_dict(), DISCRIMINATOR_PATH)
+
+def train_vae_model():
+    random.seed(42)
+    torch.manual_seed(42)
+    model = VAE().to(DEVICE)
+
+    optimizer = optim.Adam(model.parameters(), lr=VAEConfig.lr)
+    print(f'\nLoading data')
+    full_dataset = VAEDataset()
+
+    print(f'\nSplitting dataset:')
+    indices = list(range(len(full_dataset)))
+    random.shuffle(indices)
+    test_size = 5
+    train_size = len(indices) - test_size
+
+    train_indices = indices[:train_size]
+    test_indices = indices[train_size:]
+
+    train_dataset = Subset(full_dataset, train_indices)
+    test_dataset = Subset(full_dataset, test_indices)
+    
+    print(f'Total samples: {len(full_dataset)}')
+    print(f'Training samples: {len(train_dataset)}')
+    print(f'Testing samples: {len(test_dataset)}')
+
+    # 数据加载器
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=VAEConfig.batch_size, 
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True
+    )
+
+    test_loader = DataLoader(
+        test_dataset, 
+        batch_size=5, 
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True
+    )
+
+    for epoch in range(VAEConfig.epochs):
+        total_losses = []
+        for batch_idx, (v) in enumerate(train_loader):
+            v = v.to(DEVICE)
+            
+            optimizer.zero_grad()
+            recon, mu, logvar = model(v)
+            loss = vae_loss_function(v, recon, mu, logvar)
+            loss = loss / len(v)
+            total_losses.append(loss.item())
+            loss.backward()
+            optimizer.step()
+
+            if batch_idx % VAEConfig.test_freq == 0:
+                draw_vae_samples(model, test_loader)
+
+        print(f"Epoch {epoch+1}, Loss: {np.mean(total_losses)}")
