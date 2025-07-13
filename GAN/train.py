@@ -63,7 +63,7 @@ def train_gan_model():
     adversarial_loss = nn.BCELoss()
     optimizer_G = optim.Adam(generator.parameters(), lr=config.lr)
     optimizer_D = optim.Adam(discriminator.parameters(), lr=config.lr)
-    dataset = GANDataset(num_samples=5000)
+    dataset = GANDataset()
     dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
     for epoch in range(config.epochs):
@@ -144,12 +144,12 @@ def train_vae_model():
             optimizer.zero_grad()
             recon, mu, logvar = model(v)
             loss = vae_loss_function(v, recon, mu, logvar)
-            loss = loss / len(v)
             total_losses.append(loss.item())
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
-            if batch_idx % VAEConfig.test_freq == 0:
-                draw_vae_samples(model, test_loader)
+        if epoch % VAEConfig.test_freq == 0:
+            draw_vae_samples(model, epoch, dataloader=test_loader)
 
         print(f"Epoch {epoch+1}, Loss: {np.mean(total_losses)}")

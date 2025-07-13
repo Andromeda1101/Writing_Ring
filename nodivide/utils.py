@@ -102,7 +102,7 @@ def velocity_loss(outputs, target, valid_num, alpha=0.8):
     
     return mse_loss # * alpha + (1-alpha) * cos_loss
 
-def traject_loss(outputs, targets, valid_num, rel_weight=1.0, abs_weight=1.0, dir_weight=0.3):
+def traject_loss(outputs, targets, valid_num, rel_weight=0.4, length_weight=0.4, abs_weight=0.2, dir_weight=0.2):
     outputs_traj = speed2point(outputs)
     targets_traj = speed2point(targets)
     
@@ -116,15 +116,23 @@ def traject_loss(outputs, targets, valid_num, rel_weight=1.0, abs_weight=1.0, di
     #     rel_loss = rel_loss_x + rel_loss_y * 1.2
     
     # 绝对位置损失
-    abs_loss = F.mse_loss(outputs_traj, targets_traj, reduction="sum") / (valid_num + 1e-8)
+    # abs_loss = F.mse_loss(outputs_traj, targets_traj, reduction="sum") / (valid_num + 1e-8)
+
+    # 路径长度损失
+    pred_length = torch.norm(rel_outputs_traj, dim=-1).sum(dim=1)
+    targ_length = torch.norm(rel_targets_traj, dim=-1).sum(dim=1)
+    length_loss = F.mse_loss(pred_length, targ_length)
 
     # 方向损失
-    # direction_loss = 1 - F.cosine_similarity(rel_outputs_traj, rel_targets_traj, dim=-1).mean()
+    pred_dir = F.normalize(rel_outputs_traj, dim=-1)
+    target_dir = F.normalize(rel_targets_traj, dim=-1)
+    direction_loss = 1 - F.cosine_similarity(pred_dir, target_dir, dim=-1).mean()
     
     total_loss = (
         rel_weight * rel_loss 
-        + abs_weight * abs_loss
-        # + dir_weight * direction_loss
+        + length_weight * length_loss
+        # + abs_weight * abs_loss
+        + dir_weight * direction_loss
     )
     return total_loss
 

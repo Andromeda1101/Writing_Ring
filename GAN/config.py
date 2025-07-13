@@ -31,5 +31,5 @@ class VAEConfig:
     latent_dim = 1024
     epochs = 300
     lr = 0.001
-    test_freq = 20
+    test_freq = 40
     batch_size = 16

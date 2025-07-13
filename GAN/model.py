@@ -117,7 +117,7 @@ class Encoder(nn.Module):
 
         self.encoder = nn.Sequential(
             nn.Linear(input_dim, hidden_dim * 2),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(hidden_dim * 2, hidden_dim),
         )
 
@@ -134,11 +134,10 @@ class Decoder(nn.Module):
 
         self.decoder = nn.Sequential(
             nn.Linear(latent_dim, hidden_dim * 2),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(hidden_dim * 2, hidden_dim),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(hidden_dim, input_dim),
-            nn.Sigmoid()
         )
 
     def forward(self, z):

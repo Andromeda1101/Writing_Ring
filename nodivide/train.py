@@ -1,7 +1,7 @@
 # train.py
 import random
 import torch
-from .dataset import IMUTrajectoryDataset, train_collate_fn, val_collate_fn
+from .dataset import IMUTrajectoryDataset
 from .model import IMUToTrajectoryNet
 from .config import *
 from torch.utils.data import Subset
@@ -80,20 +80,10 @@ def train_model():
     # 加载数据集
     print(f'\nLoading data')
     full_dataset = IMUTrajectoryDataset()
-    indices = list(range(len(full_dataset)))
-    random.shuffle(indices)
-    
-    test_size = int(0.1 * len(indices))
-    val_size = int(0.1 * len(indices))
-    train_size = len(indices) - test_size - val_size
 
-    train_indices = indices[:train_size]
-    val_indices = indices[train_size:train_size + val_size]
-    test_indices = indices[train_size + val_size:]
-
-    train_dataset = Subset(full_dataset, train_indices)
-    val_dataset = Subset(full_dataset, val_indices)
-    test_dataset = Subset(full_dataset, test_indices)
+    train_dataset = Subset(full_dataset, full_dataset.train_indices)
+    val_dataset = Subset(full_dataset, full_dataset.val_indices)
+    test_dataset = Subset(full_dataset, full_dataset.test_indices)
     
     print(f'\nSplitting dataset:')
     print(f'Total samples: {len(full_dataset)}')
@@ -106,7 +96,6 @@ def train_model():
         train_dataset, 
         batch_size=TRAIN_CONFIG.batch_size, 
         shuffle=True,
-        collate_fn=train_collate_fn,
         num_workers=4,
         pin_memory=True
     )
@@ -115,7 +104,6 @@ def train_model():
         val_dataset,
         batch_size=TRAIN_CONFIG.batch_size,
         shuffle=False,
-        collate_fn=val_collate_fn,
         num_workers=4,
         pin_memory=True
     )
@@ -124,7 +112,6 @@ def train_model():
         test_dataset, 
         batch_size=TRAIN_CONFIG.batch_size, 
         shuffle=False,
-        collate_fn=val_collate_fn,
         num_workers=4,
         pin_memory=True
     )
@@ -191,7 +178,7 @@ def train_model():
     wandb.log({"final_test_loss": test_loss})
 
     wandb.finish()
-    torch.save(model.state_dict(), 'nodivide/final_model.pth')
+    torch.save(model.state_dict(), FINAL_SAVE_PATH)
 
 if __name__ == "__main__":
     train_model()

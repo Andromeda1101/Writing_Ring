@@ -40,21 +40,22 @@ def enhance_dataset_gan(imu_samples, vel_samples):
     return combined_imu, combined_vel
 
 def vae_loss_function(x, recon_x, mu, logvar):
-    # 这里要计算ELBO(也就是论文中的$\mathcal{L}$)，但是由于论文中的目标是最大化ELBO，pytorch中是最小化loss，所以这里实际计算的是-ELBO
-    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) # 计算KL散度
-    BCE = nn.functional.binary_cross_entropy(recon_x, x, reduction='sum') # 计算重构误差，对应论文中的$-\log p_{\theta}(x|z)$，注意BCE loss本身前面有个负号
-    return KLD + BCE
+    KLD = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+    MSE = nn.functional.mse_loss(recon_x, x, reduction='mean')
+    return KLD + MSE
 
 def draw_vae_samples(model, epoch, dataloader):
     recon_batch = []
     target_batch = []
     with torch.no_grad():
         for v in dataloader:
-            z = model.encoder(v)
-            recon_batch = model.decode(z)
-            target_batch = v.view(-1, -1, 2).cpu().numpy()
-            recon_batch = recon_batch.view(-1, -1, 2).cpu().numpy()
-
+            v = v.to(DEVICE)
+            recon, _, _ = model(v)
+            batch_size = v.size(0)
+            target_batch = v.view(batch_size, VAEConfig.seq_length, 2).cpu().numpy()
+            recon_batch = recon.view(batch_size, VAEConfig.seq_length, 2).cpu().numpy()
+    
+    os.makedirs(VAE_PICT_DIR, exist_ok=True)
     for i, (recon, targ) in enumerate(zip(recon_batch, target_batch)):
         plt.figure(figsize=(80, 100))
         plt.subplot(2, 1, 1)
@@ -67,7 +68,7 @@ def draw_vae_samples(model, epoch, dataloader):
         plt.legend()
 
         plt.subplot(4, 1, 3)
-        time_steps = VAEConfig.seq_length
+        time_steps = np.arange(VAEConfig.seq_length)
         plt.plot(time_steps, recon[:, 0], 'r-', label='Predicted', alpha=0.5)
         plt.plot(time_steps, targ[:, 0], 'b-', label='Ground Truth', alpha=0.5)
         plt.xlabel('Time Step')

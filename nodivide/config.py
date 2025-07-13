@@ -14,7 +14,8 @@ def get_device():
 DEVICE = get_device()
 DATA_DIR = "data/frame_standard_delete_g" 
 SAVED_DATA_PATH = "processed_data.pth"     
-MODEL_SAVE_PATH = "best_model.pth"    
+MODEL_SAVE_PATH = "best_model.pth"   
+FINAL_SAVE_PATH = "final_model.pth" 
 DATA_LENGTH = 10000
 
 # 模型参数

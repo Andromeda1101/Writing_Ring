@@ -14,12 +14,20 @@ class IMUTrajectoryDataset(Dataset):
     def __init__(self, data_dir=DATA_DIR, save_processed=True):
         self.data_dir = data_dir
         self.samples = []
+        self.sample_len = 0
+        self.x_mean = 0.0
+        self.x_std = 0.0
+        self.train_indices = []
+        self.val_indices = []
+        self.test_indices = []
         self.window_size = TRAIN_CONFIG.time_step
         self.stride = TRAIN_CONFIG.stride
         self._load_or_process_data(save_processed)
+        
 
     def _process_data(self):
         sample_idx = 0
+        all_x_data = []
         for name in tqdm(os.listdir(self.data_dir)):
             name_path = os.path.join(self.data_dir, name)
             for i in os.listdir(name_path):
@@ -44,11 +52,7 @@ class IMUTrajectoryDataset(Dataset):
                             # 平滑数据
                             y_data = smooth_data(y_data)
 
-                            # 归一化
-                            # x_mean = np.mean(x_data, axis=0)
-                            # x_std = np.std(x_data, axis=0)
-                            # x_std[x_std == 0] = 1  # 防止除零
-                            # x_data = (x_data - x_mean) / x_std
+                            all_x_data.append(x_data)
 
                             x_tensor = torch.FloatTensor(x_data)
                             y_tensor = torch.FloatTensor(y_data)
@@ -77,61 +81,72 @@ class IMUTrajectoryDataset(Dataset):
         print(f'Loaded {len(self.samples)} windows from {self.data_dir}')
         print(f'Window size: {self.window_size}, Stride: {self.stride}')
         
+        # 划分
+        self.sample_len = len(self.samples)
+        indices = list(range(self.sample_len))
+        random.shuffle(indices)
+        
+        test_size = int(0.1 * len(indices))
+        val_size = int(0.1 * len(indices))
+        train_size = len(indices) - test_size - val_size
+
+        self.train_indices = np.array(indices[:train_size])
+        self.val_indices = np.array(indices[train_size:train_size + val_size])
+        self.test_indices = np.array(indices[train_size + val_size:])
+
+        # 归一化
+        train_x = np.vstack(all_x_data)
+        train_x = train_x[self.train_indices]
+        all_x_tensor = torch.FloatTensor(train_x)
+        self.x_mean = torch.mean(all_x_tensor, axis=0)
+        self.x_std = torch.std(all_x_tensor, axis=0)
+        self.x_std[self.x_std == 0] = 1 
+
         # 保存处理后的数据
         torch.save({
             'samples': self.samples,
-            'window_size': self.window_size,
-            'stride': self.stride
+            'x_mean': self.x_mean,
+            'x_std': self.x_std,
+            'train_indices': self.train_indices,
+            'val_indices': self.val_indices,
+            'test_indices': self.test_indices
         }, SAVED_DATA_PATH)
 
     def _load_or_process_data(self, save_processed):
+        self.x = []
+        self.y = []
+        self.m = []
+        self.sample_idx = []
+        self.window_idx = []
+
         if os.path.exists(SAVED_DATA_PATH):
             print("Loading preprocessed data...")
-            data = torch.load(SAVED_DATA_PATH, weights_only=True)
+            data = torch.load(SAVED_DATA_PATH, weights_only=False)
             self.samples = data['samples']
+            self.x_mean = data['x_mean']
+            self.x_std = data['x_std']
+            self.train_indices = data['train_indices']
+            self.val_indices = data['val_indices']
+            self.test_indices = data['test_indices']
+
         else:
             print("Processing raw data...")
             self._process_data()
             if save_processed:
                 print(f"Saved processed data to {SAVED_DATA_PATH}")
+        
+        for item in self.samples:
+            self.x.append((item['x'] - self.x_mean) / self.x_std) 
+            self.y.append(item['y'])
+            self.m.append(item['m'])
+            self.sample_idx.append(item['sample_idx'])
+            self.window_idx.append(item['window_idx'])
+        
+        self.sample_len = len(self.samples)
 
     def __len__(self):
-        return len(self.samples)
+        return self.sample_len
 
     def __getitem__(self, idx):
-        return self.samples[idx]
-
-def train_collate_fn(batch):
-    for item in batch:
-        # rand = random.randint(0, 10)
-        # if rand <= 3:
-        #     item['x'] = rotation_perturb(item['x'])
-        # 归一化
-        x_mean = torch.mean(item['x'], dim=0)
-        x_std = torch.std(item['x'], dim=0)
-        x_std[x_std == 0] = 1  # 防止除零
-        item['x'] = (item['x'] - x_mean) / x_std
-
-    inputs = torch.stack([item['x'] for item in batch])
-    targets = torch.stack([item['y'] for item in batch])
-    masks = torch.stack([item['m'] for item in batch])
-    sample_idx = torch.tensor([item['sample_idx'] for item in batch])
-    window_idx = torch.tensor([item['window_idx'] for item in batch])
-    
-    return inputs, targets, masks, sample_idx, window_idx
-
-def val_collate_fn(batch):
-    for item in batch:
-        x_mean = torch.mean(item['x'], dim=0)
-        x_std = torch.std(item['x'], dim=0)
-        x_std[x_std == 0] = 1  # 防止除零
-        item['x'] = (item['x'] - x_mean) / x_std
-    inputs = torch.stack([item['x'] for item in batch])
-    targets = torch.stack([item['y'] for item in batch])
-    masks = torch.stack([item['m'] for item in batch])
-    sample_idx = torch.tensor([item['sample_idx'] for item in batch])
-    window_idx = torch.tensor([item['window_idx'] for item in batch])
-    
-    return inputs, targets, masks, sample_idx, window_idx
-
+        return self.x[idx], self.y[idx], self.m[idx], self.sample_idx[idx], self.window_idx[idx]
 
