@@ -2,7 +2,6 @@ import torch
 from nodivide.config import TRAIN_CONFIG
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DATA_DIR = "data/frame_standard_delete_g" 
 GAN_DATA_PATH = "gan_processed_data.pth"
 VAE_DATA_PATH = "vae_processed_data.pth"
 SAMPLES_PATH = "generate_samples"
@@ -30,9 +29,9 @@ class VAEConfig:
     seq_len = 100
     stride = 50
     input_dim = 2
-    hidden_dim = 256
-    latent_dim = 512
-    epochs = 300
+    hidden_dim = 128
+    latent_dim = 256
+    epochs = 100
     lr = 0.001
-    test_freq = 40
+    test_freq = 10
     batch_size = 16
