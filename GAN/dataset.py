@@ -20,8 +20,8 @@ class GANDataset(Dataset):
         return self.data[idx][0], self.data[idx][1]
         
 class VAEDataset(Dataset):
-    def __init__(self):
-        self.config = VAEConfig()
+    def __init__(self, config=VAEConfig):
+        self.config = config
         self.seq_length = self.config.seq_len
         dataset = IMUTrajectoryDataset()
         all_vel = np.vstack([y for y in dataset.y])
@@ -36,7 +36,7 @@ class VAEDataset(Dataset):
                 start_idx = self.config.full_stride
             for start in range(start_idx, self.config.full_length - self.seq_length + 1, self.config.stride):
                 end = start + self.seq_length
-                window_y = y[start:end]
+                window_y = norm_y[start:end]
                 window_m = m[start:end]
                 self.velocity_data.append(window_y)
                 self.masks.append(window_m)

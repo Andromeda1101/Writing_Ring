@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from .config import *
-
+from .config import GANConfig
 # GAN
 class Generator(nn.Module):
     def __init__(self):
@@ -112,9 +111,9 @@ class Discriminator(nn.Module):
 
 # VAE 
 class VAE(nn.Module):
-    def __init__(self):
+    def __init__(self, config):
         super(VAE, self).__init__()
-        self.config = VAEConfig
+        self.config = config
         
         # 编码器
         self.encoder_gru = nn.GRU(self.config.input_dim, self.config.hidden_dim, batch_first=True)

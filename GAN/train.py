@@ -1,7 +1,10 @@
 import os
 import random
-from .model import *
-from .config import *
+import torch
+import torch.nn as nn
+from nodivide.utils import class_to_dict
+from .model import Generator, Discriminator, VAE
+from .config import DEVICE, GANConfig, SAMPLES_PATH, GENERATOR_PATH, DISCRIMINATOR_PATH, VAEConfig
 from .dataset import GANDataset, VAEDataset
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 import torch.optim as optim
@@ -10,6 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from .utils import vae_loss_function, draw_vae_samples
 from tqdm import tqdm
+import swanlab as wandb
 
 def train_gan(generator, discriminator, dataloader, optimizer_G, optimizer_D, adversarial_loss):
     total_g_loss = 0.0
@@ -94,14 +98,16 @@ def train_gan_model():
     torch.save(generator.state_dict(), GENERATOR_PATH)
     torch.save(discriminator.state_dict(), DISCRIMINATOR_PATH)
 
-def train_vae_model():
+def train_vae_model(config=VAEConfig):
     random.seed(42)
     torch.manual_seed(42)
-    model = VAE().to(DEVICE)
+    model = VAE(config=config).to(DEVICE)
 
-    optimizer = optim.Adam(model.parameters(), lr=VAEConfig.lr)
+    wandb.init(project="imu-trajectory", config={**class_to_dict(config)})
+
+    optimizer = optim.Adam(model.parameters(), lr=config.lr)
     print(f'\nLoading data')
-    full_dataset = VAEDataset()
+    full_dataset = VAEDataset(config)
 
     print(f'\nSplitting dataset:')
     indices = list(range(len(full_dataset)))
@@ -122,7 +128,7 @@ def train_vae_model():
     # 数据加载器
     train_loader = DataLoader(
         train_dataset, 
-        batch_size=VAEConfig.batch_size, 
+        batch_size=config.batch_size, 
         shuffle=True,
         num_workers=4,
         pin_memory=True
@@ -136,7 +142,11 @@ def train_vae_model():
         pin_memory=True
     )
 
-    for epoch in range(VAEConfig.epochs):
+    patience = config.patience
+    patience_counter = 0
+    min_loss = float('inf')
+
+    for epoch in range(config.epochs):
         total_losses = []
         for batch_idx, (v, m) in tqdm(enumerate(train_loader)):
             v = v.to(DEVICE)
@@ -152,7 +162,25 @@ def train_vae_model():
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
-        if epoch % VAEConfig.test_freq == 0:
-            draw_vae_samples(model, epoch, dataloader=test_loader)
+        if epoch % config.test_freq == 0:
+            draw_vae_samples(model, epoch, dataloader=test_loader, config=config)
 
-        print(f"Epoch [{epoch+1}/{VAEConfig.epochs}] Loss: {np.mean(total_losses)}")
+        avg_loss = np.mean(total_losses)
+        print(f"Epoch [{epoch+1}/{config.epochs}] Loss: {avg_loss:.4f}")
+
+        wandb.log({"epoch": epoch + 1, "loss":  avg_loss})
+        # Early stopping
+        if avg_loss < min_loss:
+            min_loss = avg_loss
+            patience_counter = 0
+            torch.save(model.state_dict(), os.path.join(config.vae_dir, config.model_path))
+            print(f"Model saved at epoch {epoch + 1} with loss {avg_loss:.4f}")
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f"Early stopping at epoch {epoch + 1}")
+                torch.save(model.state_dict(), os.path.join(config.vae_dir, config.final_model_path))
+                break
+    
+    wandb.finish()
+        

@@ -169,7 +169,6 @@ def train_model():
             "train_loss": train_loss,
             "val_loss": val_loss,
             "learning_rate": optimizer.param_groups[0]['lr'],
-            "patience_counter": patience_counter
         })
     
     # model.load_state_dict(torch.load('best_masked_model.pth'))

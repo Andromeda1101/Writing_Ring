@@ -1,9 +1,13 @@
 import os
+import numpy as np
 from matplotlib import pyplot as plt
-from .model import *
+from .model import Generator, Discriminator, VAE
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from nodivide.utils import speed2traj
-
+import swanlab as wandb
+import torch
+import torch.nn as nn
+from .config import DEVICE, GENERATOR_PATH, GANConfig
 
 def augment_data(generator, original_vel, num_samples):
     """使用生成器增强数据"""
@@ -44,18 +48,22 @@ def vae_loss_function(x, recon_x, mu, logvar, valid_num):
     MSE = nn.functional.mse_loss(recon_x, x, reduction='sum') / (valid_num + 1e-8)
     return KLD + MSE
 
-def draw_vae_samples(model, epoch, dataloader):
+def draw_vae_samples(model, epoch, dataloader, config):
     recon_batch = []
     target_batch = []
     with torch.no_grad():
-        for v in dataloader:
+        for v, m in dataloader:
             v = v.to(DEVICE)
+            m = m.to(DEVICE)
             recon, _, _ = model(v)
+            m = m.unsqueeze(-1).expand(-1, -1, 2)
+            recon = recon * m
             batch_size = v.size(0)
-            target_batch = v.view(batch_size, VAEConfig.seq_len, 2).cpu().numpy()
-            recon_batch = recon.view(batch_size, VAEConfig.seq_len, 2).cpu().numpy()
+            target_batch = v.view(batch_size, config.seq_len, 2).cpu().numpy()
+            recon_batch = recon.view(batch_size, config.seq_len, 2).cpu().numpy()
     
-    os.makedirs(VAE_PICT_DIR, exist_ok=True)
+    plot_dir = os.path.join(config.vae_dir, config.plot_dir)
+    os.makedirs(plot_dir, exist_ok=True)
     for i, (recon, targ) in enumerate(zip(recon_batch, target_batch)):
         plt.figure(figsize=(80, 100))
         plt.subplot(2, 1, 1)
@@ -68,7 +76,7 @@ def draw_vae_samples(model, epoch, dataloader):
         plt.legend()
 
         plt.subplot(4, 1, 3)
-        time_steps = np.arange(VAEConfig.seq_len)
+        time_steps = np.arange(config.seq_len)
         plt.plot(time_steps, recon[:, 0], 'r-', label='Predicted', alpha=0.5)
         plt.plot(time_steps, targ[:, 0], 'b-', label='Ground Truth', alpha=0.5)
         plt.xlabel('Time Step')
@@ -83,5 +91,6 @@ def draw_vae_samples(model, epoch, dataloader):
         plt.legend()
 
         plt.tight_layout()
-        plt.savefig(os.path.join(VAE_PICT_DIR, f"epoch_{epoch}_sample_{i}.png"))
+        plt.savefig(os.path.join(plot_dir, f"epoch_{epoch}_sample_{i}.png"))
+        wandb.log({f"epoch_{epoch}_sample_{i}": wandb.Image(os.path.join(plot_dir, f"epoch_{epoch}_sample_{i}.png"))})
         plt.close()
