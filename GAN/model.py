@@ -111,57 +111,40 @@ class Discriminator(nn.Module):
         return validity
 
 # VAE 
-class Encoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, latent_dim):
-        super(Encoder, self).__init__()
-
-        self.encoder = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim * 2),
-            nn.ReLU(),
-            nn.Linear(hidden_dim * 2, hidden_dim),
-        )
-
-        self.fc_mu = nn.Linear(hidden_dim, latent_dim)
-        self.fc_logvar = nn.Linear(hidden_dim, latent_dim)
-    
-    def forward(self, x):
-        h = self.encoder(x)
-        return self.fc_mu(h), self.fc_logvar(h)
-
-class Decoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, latent_dim):
-        super(Decoder, self).__init__()
-
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, hidden_dim * 2),
-            nn.ReLU(),
-            nn.Linear(hidden_dim * 2, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, input_dim),
-        )
-
-    def forward(self, z):
-        return self.decoder(z)
-
 class VAE(nn.Module):
     def __init__(self):
         super(VAE, self).__init__()
-        self.config = VAEConfig()
-        self.encoder = Encoder(self.config.input_dim, self.config.hidden_dim, self.config.latent_dim)
-        self.decoder = Decoder(self.config.input_dim, self.config.hidden_dim, self.config.latent_dim)
-    
+        self.config = VAEConfig
+        
+        # 编码器
+        self.encoder_gru = nn.GRU(self.config.input_dim, self.config.hidden_dim, batch_first=True)
+        self.fc_mu = nn.Linear(self.config.hidden_dim, self.config.latent_dim)
+        self.fc_logvar = nn.Linear(self.config.hidden_dim, self.config.latent_dim)
+        
+        # 解码器
+        self.decoder_gru = nn.GRU(self.config.latent_dim, self.config.hidden_dim, batch_first=True)
+        self.decoder_fc = nn.Linear(self.config.hidden_dim, self.config.input_dim)
+        
     def encode(self, x):
-        return self.encoder(x)
-
-    def decode(self, z):
-        return self.decoder(z)
-
+        _, h = self.encoder_gru(x)  # 使用最后一个隐藏状态
+        h = h.squeeze(0)
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
+        return mu, logvar
+    
     def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5 * logvar) # 计算标准差, std = sqrt(var) = sqrt(exp(logvar)) = exp(logvar/2)
-        epsilon = torch.randn_like(std, requires_grad=False) # 从标准正态分布中采样epsilon
-        return mu + epsilon * std
-
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+    
+    def decode(self, z):
+        z = z.unsqueeze(1).repeat(1, self.config.seq_len, 1)
+        output, _ = self.decoder_gru(z)
+        recon = self.decoder_fc(output)
+        return recon
+    
     def forward(self, x):
-        mu, logvar = self.encoder(x)
+        mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
-        return self.decoder(z), mu, logvar
+        recon_x = self.decode(z)
+        return recon_x, mu, logvar

@@ -138,7 +138,7 @@ def train_vae_model():
 
     for epoch in range(VAEConfig.epochs):
         total_losses = []
-        for batch_idx, (v) in enumerate(train_loader):
+        for batch_idx, (v) in tqdm(enumerate(train_loader)):
             v = v.to(DEVICE)
             
             optimizer.zero_grad()
@@ -152,4 +152,4 @@ def train_vae_model():
         if epoch % VAEConfig.test_freq == 0:
             draw_vae_samples(model, epoch, dataloader=test_loader)
 
-        print(f"Epoch {epoch+1}, Loss: {np.mean(total_losses)}")
+        print(f"Epoch [{epoch+1}/{VAEConfig.epochs}] Loss: {np.mean(total_losses)}")

@@ -1,4 +1,5 @@
 import torch
+from nodivide.config import TRAIN_CONFIG
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DATA_DIR = "data/frame_standard_delete_g" 
@@ -8,8 +9,8 @@ SAMPLES_PATH = "generate_samples"
 GENERATOR_PATH = "imu_generator.pth"
 DISCRIMINATOR_PATH = "imu_discriminator.pth"
 VAE_PICT_DIR = "vae_pict"
-SEQ_LENGTH = 10000
-STRIDE = 5000
+SEQ_LENGTH = TRAIN_CONFIG.time_step
+STRIDE = TRAIN_CONFIG.stride
 
 class GANConfig:
     seq_length = SEQ_LENGTH      
@@ -24,11 +25,13 @@ class GANConfig:
     sample_interval = 500
 
 class VAEConfig:
-    seq_length = SEQ_LENGTH
-    stride = STRIDE
-    input_dim = 2 * SEQ_LENGTH
-    hidden_dim = 4096
-    latent_dim = 1024
+    full_length = SEQ_LENGTH
+    full_stride = STRIDE
+    seq_len = 1000
+    stride = 500
+    input_dim = 2
+    hidden_dim = 256
+    latent_dim = 512
     epochs = 300
     lr = 0.001
     test_freq = 40

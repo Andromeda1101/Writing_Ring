@@ -8,9 +8,9 @@ import types
 
 def smooth_data(data):
     smooth_data = data.copy()
-    slide = 5000
-    window_size = 10
-    inter_window_size = 4
+    slide = 500
+    window_size = 14
+    inter_window_size = 6
     is_changed = False
     threshold = 0.5
     max_iter = 10
@@ -102,7 +102,7 @@ def velocity_loss(outputs, target, valid_num, alpha=0.8):
     
     return mse_loss # * alpha + (1-alpha) * cos_loss
 
-def traject_loss(outputs, targets, valid_num, rel_weight=0.4, length_weight=0.4, abs_weight=0.2, dir_weight=0.2):
+def traject_loss(outputs, targets, valid_num, rel_weight=TRAIN_CONFIG.rel_weight, length_weight=TRAIN_CONFIG.length_weight, abs_weight=TRAIN_CONFIG.abs_weight, dir_weight=TRAIN_CONFIG.dir_weight):
     outputs_traj = speed2point(outputs)
     targets_traj = speed2point(targets)
     
@@ -116,7 +116,7 @@ def traject_loss(outputs, targets, valid_num, rel_weight=0.4, length_weight=0.4,
     #     rel_loss = rel_loss_x + rel_loss_y * 1.2
     
     # 绝对位置损失
-    # abs_loss = F.mse_loss(outputs_traj, targets_traj, reduction="sum") / (valid_num + 1e-8)
+    abs_loss = F.mse_loss(outputs_traj[:, -1], targets_traj[:, -1])
 
     # 路径长度损失
     pred_length = torch.norm(rel_outputs_traj, dim=-1).sum(dim=1)
@@ -131,7 +131,7 @@ def traject_loss(outputs, targets, valid_num, rel_weight=0.4, length_weight=0.4,
     total_loss = (
         rel_weight * rel_loss 
         + length_weight * length_loss
-        # + abs_weight * abs_loss
+        + abs_weight * abs_loss
         + dir_weight * direction_loss
     )
     return total_loss

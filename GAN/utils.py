@@ -52,8 +52,8 @@ def draw_vae_samples(model, epoch, dataloader):
             v = v.to(DEVICE)
             recon, _, _ = model(v)
             batch_size = v.size(0)
-            target_batch = v.view(batch_size, VAEConfig.seq_length, 2).cpu().numpy()
-            recon_batch = recon.view(batch_size, VAEConfig.seq_length, 2).cpu().numpy()
+            target_batch = v.view(batch_size, VAEConfig.seq_len, 2).cpu().numpy()
+            recon_batch = recon.view(batch_size, VAEConfig.seq_len, 2).cpu().numpy()
     
     os.makedirs(VAE_PICT_DIR, exist_ok=True)
     for i, (recon, targ) in enumerate(zip(recon_batch, target_batch)):
@@ -68,7 +68,7 @@ def draw_vae_samples(model, epoch, dataloader):
         plt.legend()
 
         plt.subplot(4, 1, 3)
-        time_steps = np.arange(VAEConfig.seq_length)
+        time_steps = np.arange(VAEConfig.seq_len)
         plt.plot(time_steps, recon[:, 0], 'r-', label='Predicted', alpha=0.5)
         plt.plot(time_steps, targ[:, 0], 'b-', label='Ground Truth', alpha=0.5)
         plt.xlabel('Time Step')

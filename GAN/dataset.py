@@ -22,16 +22,21 @@ class GANDataset(Dataset):
 class VAEDataset(Dataset):
     def __init__(self):
         self.config = VAEConfig()
-        self.seq_length = self.config.seq_length
+        self.seq_length = self.config.seq_len
         dataset = IMUTrajectoryDataset()
         all_vel = np.vstack([y for y in dataset.y])
         self.mean = torch.tensor(np.mean(all_vel, axis=0), dtype=torch.float32)
         self.std = torch.tensor(np.std(all_vel, axis=0) + 1e-8, dtype=torch.float32)
-        # 标准化
         self.velocity_data = []
-        for y in dataset.y:
+        for y, i in zip(dataset.y, dataset.window_idx):
             norm_y = (y - self.mean) / self.std
-            self.velocity_data.append(norm_y.reshape(-1))
+            start_idx = 0
+            if i != 0:
+                start_idx = self.config.full_stride
+            for start in range(start_idx, self.config.full_length - self.seq_length + 1, self.config.stride):
+                end = start + self.seq_length
+                window_y = y[start:end]
+                self.velocity_data.append(window_y)
         
     def __len__(self):
         return len(self.velocity_data)

@@ -35,9 +35,11 @@ class TRAIN_CONFIG:
     patience = 10
     min_delta = 1e-6
     batch_size = 8  
-    time_step = 10000
+    time_step = DATA_LENGTH
     stride = 5000
     warmup_steps = 10
-    grad_weight = 2.0
-    dist_weight = 0.6
+    rel_weight=0.3
+    length_weight=0.4
+    abs_weight=0.2
+    dir_weight=0.4
     data_size = 1.0
