@@ -48,11 +48,19 @@ class IMUToTrajectoryNet(nn.Module):
             nn.LeakyReLU(negative_slope=0.1),
             nn.LayerNorm([self.config.hidden_size * 2, self.config.length])
         )
+
+        # 卷积注意力层
+        self.conv_attention = nn.Sequential(
+            nn.Linear(self.config.hidden_size * 2, self.config.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.config.hidden_size, 1),
+            nn.Softmax(dim=1)
+        )
         
         # 全连接层
         self.decoder = nn.Sequential(
             # nn.Linear(self.config["hidden_size"] * 6, 256),
-            nn.Linear(self.config.hidden_size * 6, self.config.hidden_size),
+            nn.Linear(self.config.hidden_size * 8, self.config.hidden_size),
             nn.LeakyReLU(negative_slope=0.1),
             nn.Dropout(self.config.dropout),
             nn.Linear(self.config.hidden_size, self.config.output_size),
@@ -73,9 +81,13 @@ class IMUToTrajectoryNet(nn.Module):
             # 卷积
             conv_input = cat_features.transpose(1, 2)  # [B, hidden_size*4, seq_len]
             conv_output = self.conv_block(conv_input)  # [B, hidden_size*2, seq_len]
-            # 残差连接
             conv_output = conv_output.transpose(1, 2)  # [B, seq_len, hidden_size*2]
-            conv_features = torch.cat((cat_features, conv_output), dim=-1)  # [B, seq_len, hidden_size*6]
+            conv_attention_weights = self.conv_attention(conv_output)  # [B, seq_len, 1]
+            weighted_conv_output = torch.sum(conv_output * conv_attention_weights, dim=1)  # [B, hidden_size*2]
+            weighted_conv_output = weighted_conv_output.unsqueeze(1).repeat(1, conv_output.size(1), 1)  # [B, seq_len, hidden_size*2]
+            cat_conv_features = torch.cat((conv_output, weighted_conv_output), dim=-1)  # [B, seq_len, hidden_size*4]
+            # 残差连接
+            conv_features = torch.cat((cat_features, cat_conv_features), dim=-1)  # [B, seq_len, hidden_size*8]
 
             # 全连接层
             # output = self.decoder(mixed_features)  # [B, seq_len, output_size]

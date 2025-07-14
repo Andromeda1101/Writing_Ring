@@ -39,9 +39,9 @@ def enhance_dataset_gan(imu_samples, vel_samples):
 
     return combined_imu, combined_vel
 
-def vae_loss_function(x, recon_x, mu, logvar):
-    KLD = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
-    MSE = nn.functional.mse_loss(recon_x, x, reduction='mean')
+def vae_loss_function(x, recon_x, mu, logvar, valid_num):
+    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / (valid_num + 1e-8)
+    MSE = nn.functional.mse_loss(recon_x, x, reduction='sum') / (valid_num + 1e-8)
     return KLD + MSE
 
 def draw_vae_samples(model, epoch, dataloader):

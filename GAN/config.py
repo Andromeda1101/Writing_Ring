@@ -27,8 +27,8 @@ class GANConfig:
 class VAEConfig:
     full_length = SEQ_LENGTH
     full_stride = STRIDE
-    seq_len = 1000
-    stride = 500
+    seq_len = 100
+    stride = 50
     input_dim = 2
     hidden_dim = 256
     latent_dim = 512

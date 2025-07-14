@@ -28,7 +28,8 @@ class VAEDataset(Dataset):
         self.mean = torch.tensor(np.mean(all_vel, axis=0), dtype=torch.float32)
         self.std = torch.tensor(np.std(all_vel, axis=0) + 1e-8, dtype=torch.float32)
         self.velocity_data = []
-        for y, i in zip(dataset.y, dataset.window_idx):
+        self.masks = []
+        for y, m, i in zip(dataset.y, dataset.m, dataset.window_idx):
             norm_y = (y - self.mean) / self.std
             start_idx = 0
             if i != 0:
@@ -36,11 +37,13 @@ class VAEDataset(Dataset):
             for start in range(start_idx, self.config.full_length - self.seq_length + 1, self.config.stride):
                 end = start + self.seq_length
                 window_y = y[start:end]
+                window_m = m[start:end]
                 self.velocity_data.append(window_y)
+                self.masks.append(window_m)
         
     def __len__(self):
         return len(self.velocity_data)
     
     def __getitem__(self, idx):
-        return self.velocity_data[idx]
+        return self.velocity_data[idx], self.masks[idx]
     

@@ -138,12 +138,15 @@ def train_vae_model():
 
     for epoch in range(VAEConfig.epochs):
         total_losses = []
-        for batch_idx, (v) in tqdm(enumerate(train_loader)):
+        for batch_idx, (v, m) in tqdm(enumerate(train_loader)):
             v = v.to(DEVICE)
-            
+            m = m.to(DEVICE)
+
             optimizer.zero_grad()
             recon, mu, logvar = model(v)
-            loss = vae_loss_function(v, recon, mu, logvar)
+            m = m.unsqueeze(-1).expand(-1, -1, 2)
+            recon = recon * m
+            loss = vae_loss_function(v, recon, mu, logvar, valid_num = m.sum())
             total_losses.append(loss.item())
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)

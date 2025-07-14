@@ -116,7 +116,7 @@ def traject_loss(outputs, targets, valid_num, rel_weight=TRAIN_CONFIG.rel_weight
     #     rel_loss = rel_loss_x + rel_loss_y * 1.2
     
     # 绝对位置损失
-    abs_loss = F.mse_loss(outputs_traj[:, -1], targets_traj[:, -1])
+    # abs_loss = F.mse_loss(outputs_traj[:, -1], targets_traj[:, -1])
 
     # 路径长度损失
     pred_length = torch.norm(rel_outputs_traj, dim=-1).sum(dim=1)
@@ -131,7 +131,7 @@ def traject_loss(outputs, targets, valid_num, rel_weight=TRAIN_CONFIG.rel_weight
     total_loss = (
         rel_weight * rel_loss 
         + length_weight * length_loss
-        + abs_weight * abs_loss
+        # + abs_weight * abs_loss
         + dir_weight * direction_loss
     )
     return total_loss
