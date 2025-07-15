@@ -103,11 +103,13 @@ def train_vae_model(config=VAEConfig):
     torch.manual_seed(42)
     model = VAE(config=config).to(DEVICE)
 
-    wandb.init(project="imu-trajectory", config={**class_to_dict(config)})
+    wandb.init(project="ring-vae", config={**class_to_dict(config)})
 
     optimizer = optim.Adam(model.parameters(), lr=config.lr)
     print(f'\nLoading data')
     full_dataset = VAEDataset(config)
+    samples_mean = full_dataset.mean
+    samples_std = full_dataset.std
 
     print(f'\nSplitting dataset:')
     indices = list(range(len(full_dataset)))
@@ -163,7 +165,7 @@ def train_vae_model(config=VAEConfig):
             optimizer.step()
 
         if epoch % config.test_freq == 0:
-            draw_vae_samples(model, epoch, dataloader=test_loader, config=config)
+            draw_vae_samples(model, epoch, dataloader=test_loader, config=config, mean=samples_mean, std=samples_std)
 
         avg_loss = np.mean(total_losses)
         print(f"Epoch [{epoch+1}/{config.epochs}] Loss: {avg_loss:.4f}")

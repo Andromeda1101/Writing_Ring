@@ -48,7 +48,7 @@ def vae_loss_function(x, recon_x, mu, logvar, valid_num):
     MSE = nn.functional.mse_loss(recon_x, x, reduction='sum') / (valid_num + 1e-8)
     return KLD + MSE
 
-def draw_vae_samples(model, epoch, dataloader, config):
+def draw_vae_samples(model, epoch, dataloader, config, mean, std):
     recon_batch = []
     target_batch = []
     with torch.no_grad():
@@ -57,15 +57,16 @@ def draw_vae_samples(model, epoch, dataloader, config):
             m = m.to(DEVICE)
             recon, _, _ = model(v)
             m = m.unsqueeze(-1).expand(-1, -1, 2)
-            recon = recon * m
-            batch_size = v.size(0)
-            target_batch = v.view(batch_size, config.seq_len, 2).cpu().numpy()
-            recon_batch = recon.view(batch_size, config.seq_len, 2).cpu().numpy()
+            v = v.cpu()
+            recon = recon.cpu()
+            m = m.cpu()
+            target_batch = renorm_vel(v, mean, std, m).numpy()
+            recon_batch = renorm_vel(recon, mean, std, m).numpy()
     
-    plot_dir = os.path.join(config.vae_dir, config.plot_dir)
+    plot_dir = os.path.join(config.vae_dir, config.plots_dir)
     os.makedirs(plot_dir, exist_ok=True)
     for i, (recon, targ) in enumerate(zip(recon_batch, target_batch)):
-        plt.figure(figsize=(80, 100))
+        plt.figure(figsize=(20, 25))
         plt.subplot(2, 1, 1)
         recon_traj = speed2traj(recon)
         targ_traj = speed2traj(targ)
@@ -94,3 +95,8 @@ def draw_vae_samples(model, epoch, dataloader, config):
         plt.savefig(os.path.join(plot_dir, f"epoch_{epoch}_sample_{i}.png"))
         wandb.log({f"epoch_{epoch}_sample_{i}": wandb.Image(os.path.join(plot_dir, f"epoch_{epoch}_sample_{i}.png"))})
         plt.close()
+
+def renorm_vel(vel, mean, std, m):
+    rn_v = vel * std + mean
+    rn_v = rn_v * m
+    return rn_v

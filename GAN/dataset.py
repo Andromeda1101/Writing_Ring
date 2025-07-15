@@ -24,13 +24,14 @@ class VAEDataset(Dataset):
         self.config = config
         self.seq_length = self.config.seq_len
         dataset = IMUTrajectoryDataset()
-        all_vel = np.vstack([y for y in dataset.y])
+        all_vel = np.vstack([y[m==1] for y, m in zip(dataset.y, dataset.m)])
         self.mean = torch.tensor(np.mean(all_vel, axis=0), dtype=torch.float32)
-        self.std = torch.tensor(np.std(all_vel, axis=0) + 1e-8, dtype=torch.float32)
+        self.std = torch.tensor(np.std(all_vel, axis=0), dtype=torch.float32)
         self.velocity_data = []
         self.masks = []
         for y, m, i in zip(dataset.y, dataset.m, dataset.window_idx):
             norm_y = (y - self.mean) / self.std
+            norm_y = norm_y * m.unsqueeze(-1).expand(-1, 2)
             start_idx = 0
             if i != 0:
                 start_idx = self.config.full_stride

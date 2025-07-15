@@ -32,7 +32,7 @@ class VAEConfig:
     stride = 50
     input_dim = 2
     hidden_dim = 128
-    latent_dim = 256
+    latent_dim = 64
     epochs = 400
     lr = 0.001
     test_freq = 10
