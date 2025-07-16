@@ -124,10 +124,27 @@ class VAE(nn.Module):
             batch_first=True
         )
         
-        self.fc_mu = nn.Linear(self.config.hidden_dim, self.config.latent_dim)
-        self.fc_logvar = nn.Linear(self.config.hidden_dim, self.config.latent_dim)
+        self.fc_mu = nn.Sequential(
+            nn.Linear(self.config.hidden_dim, self.config.hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(self.config.dropout),
+            nn.Linear(self.config.hidden_dim, self.config.latent_dim)
+        )
+        self.fc_logvar = nn.Sequential(
+            nn.Linear(self.config.hidden_dim, self.config.hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(self.config.dropout),
+            nn.Linear(self.config.hidden_dim, self.config.latent_dim)
+        )
         
         # 解码器
+        self.decoder_pre = nn.Sequential(
+            nn.Linear(self.config.latent_dim, self.config.hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(self.config.dropout),
+            nn.Linear(self.config.hidden_dim, self.config.input_dim)
+        )
+
         self.decoder_gru = nn.GRU(
             input_size=self.config.latent_dim, 
             hidden_size=self.config.hidden_dim, 
@@ -136,7 +153,12 @@ class VAE(nn.Module):
             batch_first=True
         )
         
-        self.decoder_fc = nn.Linear(self.config.hidden_dim, self.config.input_dim)
+        self.decoder_fc = nn.Sequential(
+            nn.Linear(self.config.hidden_dim, self.config.hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(self.config.dropout),
+            nn.Linear(self.config.hidden_dim, self.config.input_dim)
+        )
         
     def encode(self, x):
         _, h = self.encoder_gru(x)
