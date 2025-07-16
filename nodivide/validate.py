@@ -6,7 +6,7 @@ import swanlab as wandb
 import tqdm
 from .utils import velocity_loss, traject_loss, draw_trajectory_plots
 
-def validate(model, dataloader, epoch=0, plot=True, is_test=False):
+def validate(model, dataloader, epoch=0, plot=True):
     if model is None:
         model = IMUToTrajectoryNet()
         model.load_state_dict(torch.load(MODEL_SAVE_PATH, map_location=DEVICE, weights_only=True))
@@ -49,7 +49,6 @@ def validate(model, dataloader, epoch=0, plot=True, is_test=False):
                     
     # 所有样本的平均损失
     avg_loss = total_loss / total_samples
-    wandb.log({"val_loss": avg_loss})
     
     if plot and epoch is not None and epoch % 10 == 0:
         plot_dir = 'trajectory_plots'

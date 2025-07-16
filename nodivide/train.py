@@ -172,7 +172,7 @@ def train_model():
         })
     
     # model.load_state_dict(torch.load('best_masked_model.pth'))
-    test_loss = validate(None, test_loader, plot=True, is_test=True)
+    test_loss = validate(None, test_loader, plot=True)
     print(f'Final Test Loss: {test_loss:.8f}')
     wandb.log({"final_test_loss": test_loss})
 

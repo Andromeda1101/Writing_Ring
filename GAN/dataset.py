@@ -23,13 +23,17 @@ class VAEDataset(Dataset):
     def __init__(self, config=VAEConfig):
         self.config = config
         self.seq_length = self.config.seq_len
-        dataset = IMUTrajectoryDataset()
-        all_vel = np.vstack([y[m==1] for y, m in zip(dataset.y, dataset.m)])
+        self.dataset = IMUTrajectoryDataset()
+        all_vel = np.vstack([y for y in self.dataset.y])
+        all_vel = all_vel[self.dataset.train_indices]
         self.mean = torch.tensor(np.mean(all_vel, axis=0), dtype=torch.float32)
         self.std = torch.tensor(np.std(all_vel, axis=0), dtype=torch.float32)
         self.velocity_data = []
         self.masks = []
-        for y, m, i in zip(dataset.y, dataset.m, dataset.window_idx):
+        self.train_indices = []
+        self.val_indices = []
+        self.test_indices = []
+        for idx, (y, m, i) in enumerate(zip(self.dataset.y, self.dataset.m, self.dataset.window_idx)):
             norm_y = (y - self.mean) / self.std
             norm_y = norm_y * m.unsqueeze(-1).expand(-1, 2)
             start_idx = 0
@@ -39,6 +43,13 @@ class VAEDataset(Dataset):
                 end = start + self.seq_length
                 window_y = norm_y[start:end]
                 window_m = m[start:end]
+                if window_m.sum() <= self.seq_length * 0.4: continue
+                if idx in self.dataset.train_indices:
+                    self.train_indices.append(len(self.velocity_data))
+                elif idx in self.dataset.val_indices:
+                    self.val_indices.append(len(self.velocity_data))
+                elif idx in self.dataset.test_indices:
+                    self.test_indices.append(len(self.velocity_data))
                 self.velocity_data.append(window_y)
                 self.masks.append(window_m)
         

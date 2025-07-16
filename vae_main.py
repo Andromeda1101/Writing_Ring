@@ -26,6 +26,10 @@ def parse_args():
                        help='Hidden dimension')
     parser.add_argument('--latent_dim', type=int, default=VAEConfig.latent_dim,
                        help='Latent dimension')
+    parser.add_argument('--dropout', type=float, default=VAEConfig.dropout,
+                       help='Dropout rate')
+    parser.add_argument('--num_layers', type=int, default=VAEConfig.num_layers,
+                       help='Number of GRU layers')
     parser.add_argument('--epochs', type=int, default=VAEConfig.epochs,
                        help='Number of epochs')
     parser.add_argument('--lr', type=float, default=VAEConfig.lr,
@@ -36,6 +40,10 @@ def parse_args():
                        help='Batch size')
     parser.add_argument('--patience', type=int, default=VAEConfig.patience,
                        help='Early stopping patience')
+    parser.add_argument('--weight_decay', type=float, default=VAEConfig.weight_decay,
+                       help='Weight decay for optimizer')
+    parser.add_argument('--kld_weight', type=float, default=VAEConfig.kld_weight,
+                       help='Weight for KLD loss')
     
     args = parser.parse_args()
     return args

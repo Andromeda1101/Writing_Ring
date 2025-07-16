@@ -11,7 +11,7 @@ import torch.optim as optim
 from torch.utils.data import Subset
 import numpy as np
 import matplotlib.pyplot as plt
-from .utils import vae_loss_function, draw_vae_samples
+from .utils import vae_loss_function, draw_vae_samples, vae_validate
 from tqdm import tqdm
 import swanlab as wandb
 
@@ -105,23 +105,15 @@ def train_vae_model(config=VAEConfig):
 
     wandb.init(project="ring-vae", config={**class_to_dict(config)})
 
-    optimizer = optim.Adam(model.parameters(), lr=config.lr)
+    
     print(f'\nLoading data')
     full_dataset = VAEDataset(config)
-    samples_mean = full_dataset.mean
-    samples_std = full_dataset.std
+    samples_mean = full_dataset.mean.to(DEVICE)
+    samples_std = full_dataset.std.to(DEVICE)
 
-    print(f'\nSplitting dataset:')
-    indices = list(range(len(full_dataset)))
-    random.shuffle(indices)
-    test_size = 5
-    train_size = len(indices) - test_size
-
-    train_indices = indices[:train_size]
-    test_indices = indices[train_size:]
-
-    train_dataset = Subset(full_dataset, train_indices)
-    test_dataset = Subset(full_dataset, test_indices)
+    train_dataset = Subset(full_dataset, full_dataset.train_indices)
+    test_dataset = Subset(full_dataset, full_dataset.test_indices)
+    val_dataset = Subset(full_dataset, full_dataset.val_indices)
     
     print(f'Total samples: {len(full_dataset)}')
     print(f'Training samples: {len(train_dataset)}')
@@ -136,20 +128,36 @@ def train_vae_model(config=VAEConfig):
         pin_memory=True
     )
 
-    test_loader = DataLoader(
-        test_dataset, 
-        batch_size=5, 
+    val_loader = DataLoader(
+        val_dataset, 
+        batch_size=config.batch_size, 
         shuffle=False,
         num_workers=4,
         pin_memory=True
     )
 
+    test_loader = DataLoader(
+        test_dataset, 
+        batch_size=config.batch_size, 
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True
+    )
+    optimizer = optim.Adam(
+        model.parameters(), 
+        lr=config.lr, 
+        weight_decay=config.weight_decay
+    )
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=5
+    )
     patience = config.patience
     patience_counter = 0
     min_loss = float('inf')
 
     for epoch in range(config.epochs):
         total_losses = []
+        model.train()
         for batch_idx, (v, m) in tqdm(enumerate(train_loader)):
             v = v.to(DEVICE)
             m = m.to(DEVICE)
@@ -158,31 +166,33 @@ def train_vae_model(config=VAEConfig):
             recon, mu, logvar = model(v)
             m = m.unsqueeze(-1).expand(-1, -1, 2)
             recon = recon * m
-            loss = vae_loss_function(v, recon, mu, logvar, valid_num = m.sum())
+            loss = vae_loss_function(v, recon, mu, logvar, valid_num = m.sum(), kld_weight=config.kld_weight)
             total_losses.append(loss.item())
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-
-        if epoch % config.test_freq == 0:
-            draw_vae_samples(model, epoch, dataloader=test_loader, config=config, mean=samples_mean, std=samples_std)
-
+            
+        # 验证集评估
+        val_loss = vae_validate(model, epoch, dataloader=val_loader, config=config, mean=samples_mean, std=samples_std)
+        scheduler.step(val_loss)
         avg_loss = np.mean(total_losses)
-        print(f"Epoch [{epoch+1}/{config.epochs}] Loss: {avg_loss:.4f}")
+        print(f"Epoch [{epoch+1}/{config.epochs}] Train Loss: {avg_loss:.4f} Validation Loss: {val_loss:.4f}")
 
-        wandb.log({"epoch": epoch + 1, "loss":  avg_loss})
+        wandb.log({"epoch": epoch + 1, "train loss":  avg_loss, "val_loss": val_loss})
         # Early stopping
-        if avg_loss < min_loss:
-            min_loss = avg_loss
+        if val_loss < min_loss:
+            min_loss = val_loss
             patience_counter = 0
             torch.save(model.state_dict(), os.path.join(config.vae_dir, config.model_path))
-            print(f"Model saved at epoch {epoch + 1} with loss {avg_loss:.4f}")
+            print(f"Model saved at epoch {epoch + 1} with loss {val_loss:.4f}")
         else:
             patience_counter += 1
             if patience_counter >= patience:
                 print(f"Early stopping at epoch {epoch + 1}")
                 torch.save(model.state_dict(), os.path.join(config.vae_dir, config.final_model_path))
                 break
-    
+    test_loss = vae_validate(None, 1000, dataloader=test_loader, config=config, mean=samples_mean, std=samples_std)
+    print(f'Final Test Loss: {test_loss:.4f}')
+    wandb.log({"final_test_loss": test_loss})
     wandb.finish()
         

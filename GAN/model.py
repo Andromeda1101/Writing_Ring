@@ -116,28 +116,40 @@ class VAE(nn.Module):
         self.config = config
         
         # 编码器
-        self.encoder_gru = nn.GRU(self.config.input_dim, self.config.hidden_dim, batch_first=True)
+        self.encoder_gru = nn.GRU(
+            input_size=self.config.input_dim, 
+            hidden_size=self.config.hidden_dim, 
+            num_layers=self.config.num_layers, 
+            dropout=self.config.dropout,
+            batch_first=True
+        )
+        
         self.fc_mu = nn.Linear(self.config.hidden_dim, self.config.latent_dim)
         self.fc_logvar = nn.Linear(self.config.hidden_dim, self.config.latent_dim)
         
         # 解码器
-        self.decoder_gru = nn.GRU(self.config.latent_dim, self.config.hidden_dim, batch_first=True)
+        self.decoder_gru = nn.GRU(
+            input_size=self.config.latent_dim, 
+            hidden_size=self.config.hidden_dim, 
+            num_layers=self.config.num_layers, 
+            dropout=self.config.dropout,
+            batch_first=True
+        )
+        
         self.decoder_fc = nn.Linear(self.config.hidden_dim, self.config.input_dim)
         
     def encode(self, x):
-        _, h = self.encoder_gru(x)  # 使用最后一个隐藏状态
-        h = h.squeeze(0)
+        _, h = self.encoder_gru(x)
+        h = h[-1]  # [batch_size, hidden_dim]
         mu = self.fc_mu(h)
         logvar = self.fc_logvar(h)
         return mu, logvar
     
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        return mu + eps * std
-    
     def decode(self, z):
-        z = z.unsqueeze(1).repeat(1, self.config.seq_len, 1)
+        # z shape: [batch_size, latent_dim]
+        batch_size = z.size(0)
+        z = z.unsqueeze(1) # [batch_size, 1, latent_dim]
+        z = z.expand(-1, self.config.seq_len, -1)
         output, _ = self.decoder_gru(z)
         recon = self.decoder_fc(output)
         return recon
@@ -147,3 +159,8 @@ class VAE(nn.Module):
         z = self.reparameterize(mu, logvar)
         recon_x = self.decode(z)
         return recon_x, mu, logvar
+    
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std

@@ -8,6 +8,7 @@ import swanlab as wandb
 import torch
 import torch.nn as nn
 from .config import DEVICE, GENERATOR_PATH, GANConfig
+from tqdm import tqdm
 
 def augment_data(generator, original_vel, num_samples):
     """使用生成器增强数据"""
@@ -43,29 +44,50 @@ def enhance_dataset_gan(imu_samples, vel_samples):
 
     return combined_imu, combined_vel
 
-def vae_loss_function(x, recon_x, mu, logvar, valid_num):
+def vae_loss_function(x, recon_x, mu, logvar, valid_num, kld_weight):
+    # 添加KLD权重参数
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / (valid_num + 1e-8)
     MSE = nn.functional.mse_loss(recon_x, x, reduction='sum') / (valid_num + 1e-8)
-    return KLD + MSE
+    
+    # 使用配置中的KLD权重
+    return MSE + kld_weight * KLD
 
-def draw_vae_samples(model, epoch, dataloader, config, mean, std):
-    recon_batch = []
-    target_batch = []
+def vae_validate(model, epoch, dataloader, config, mean, std):
+    if model is None:
+        model = VAE(config)
+        model.load_state_dict(torch.load(os.path.join(config.vae_dir, config.model_path), map_location=DEVICE, weights_only=True))
+        model.to(DEVICE)
+    model.eval()
+    total_losses = []
+    plot_num = 0
+    samples = []
     with torch.no_grad():
-        for v, m in dataloader:
+        for v, m in tqdm(dataloader):
             v = v.to(DEVICE)
             m = m.to(DEVICE)
-            recon, _, _ = model(v)
+            recon, mu, logvar = model(v)
             m = m.unsqueeze(-1).expand(-1, -1, 2)
-            v = v.cpu()
-            recon = recon.cpu()
-            m = m.cpu()
-            target_batch = renorm_vel(v, mean, std, m).numpy()
-            recon_batch = renorm_vel(recon, mean, std, m).numpy()
-    
+            recon = recon * m
+            valid_num = m.sum()
+            loss = vae_loss_function(v, recon, mu, logvar, valid_num, config.kld_weight)
+            total_losses.append(loss.item())
+
+            if epoch % config.test_freq == 0:
+                if plot_num < 5:
+                    for v, r, m in zip(v, recon, m):
+                        if plot_num >= 5: break
+                        plot_num += 1
+                        samples.append((renorm_vel(v, mean, std, m).cpu().numpy(), renorm_vel(r, mean, std, m).cpu().numpy()))
+
+    avg_loss = np.mean(total_losses)
+    if epoch % config.test_freq == 0:
+        draw_vae_samples(samples, config, epoch)
+    return avg_loss
+
+def draw_vae_samples(samples, config, epoch=0):
     plot_dir = os.path.join(config.vae_dir, config.plots_dir)
     os.makedirs(plot_dir, exist_ok=True)
-    for i, (recon, targ) in enumerate(zip(recon_batch, target_batch)):
+    for i, (targ, recon) in tqdm(enumerate(samples)):
         plt.figure(figsize=(20, 25))
         plt.subplot(2, 1, 1)
         recon_traj = speed2traj(recon)
