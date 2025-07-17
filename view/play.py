@@ -9,12 +9,6 @@ from nodivide.config import DEVICE
 from nodivide.model import IMUToTrajectoryNet, load_model
 from nodivide.dataset import get_mean_and_std
 
-def model_predict(imu_data):
-    """将6维IMU数据转换为2维坐标（模拟函数）"""
-    # 这里使用简单转换：取前两维数据并缩放
-    x = imu_data[0] * 0.1 + imu_data[1] * 0.05
-    y = imu_data[2] * 0.1 + imu_data[3] * 0.05
-    return np.array([x, y])
 
 class TrajectoryVisualizer:
     def __init__(self):
@@ -105,7 +99,7 @@ class TrajectoryVisualizer:
         
         pygame.display.flip()
     
-    def run(self):
+    def run_viewer(self):
         # 启动数据处理线程
         processing_thread = threading.Thread(target=self.data_processing_thread)
         processing_thread.daemon = True
@@ -128,4 +122,4 @@ class TrajectoryVisualizer:
 
 if __name__ == "__main__":
     visualizer = TrajectoryVisualizer()
-    visualizer.run()
+    visualizer.run_viewer()

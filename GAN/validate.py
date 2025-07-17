@@ -5,7 +5,7 @@ from tqdm import tqdm
 import numpy as np
 from GAN.config import DEVICE, GANConfig
 from GAN.model import VAE, Discriminator, Generator
-from GAN.utils import vae_loss_function
+from GAN.utils import vae_loss_function, vel_feat
 from nodivide.utils import speed2traj
 import swanlab as wandb
 
@@ -32,24 +32,24 @@ def gan_validate(generator, discriminator, dataloader, loss_fn, epoch=0):
         for batch_idx, (real_imu, real_vel, masks) in tqdm(enumerate(dataloader)):
             batch_size = real_imu.size(0)
             real_imu = real_imu.to(DEVICE)
-            real_vel = real_vel.to(DEVICE)
+            real_vel_feat = vel_feat(real_vel).to(DEVICE)
             masks = masks.to(DEVICE)
 
             # 判别器损失
             valid = torch.ones((batch_size, 1), device=DEVICE)
             fake = torch.zeros((batch_size, 1), device=DEVICE)
-            real_loss = loss_fn(discriminator(real_imu, real_vel), valid)
+            real_loss = loss_fn(discriminator(real_imu, real_vel_feat), valid)
 
             # 生成器欺骗
-            z = torch.randn((batch_size, GANConfig.seq_len, GANConfig.noise_dim), device=DEVICE)
-            fake_imu = generator(z, real_vel)
-            fake_loss = loss_fn(discriminator(fake_imu.detach(), real_vel), fake)
+            z = torch.randn(batch_size, GANConfig.noise_dim, device=DEVICE)
+            fake_imu = generator(z, real_vel_feat)
+            fake_loss = loss_fn(discriminator(fake_imu.detach(), real_vel_feat), fake)
 
             d_loss = (real_loss + fake_loss) / 2
             total_d_loss += d_loss.item()
 
             # 生成器损失
-            validity = discriminator(fake_imu, real_vel)
+            validity = discriminator(fake_imu, real_vel_feat)
             g_loss = loss_fn(validity, valid)
             total_g_loss += g_loss.item()
 
@@ -72,43 +72,43 @@ def draw_gan_samples(samples_fake, samples_targ, epoch=0):
         plt.figure(figsize=(20, 25))
         time_steps = np.arange(GANConfig.seq_len)
         plt.subplot(6, 1, 1)
-        plt.plot(time_steps, fake[:, i], 'r-', label='Generated acc_x', alpha=0.5)
-        plt.plot(time_steps, targ[:, i], 'b-', label='Ground Truth acc_x', alpha=0.5)
+        plt.plot(time_steps, fake[:, 1], 'r-', label='Generated acc_x', alpha=0.5)
+        plt.plot(time_steps, targ[:, 1], 'b-', label='Ground Truth acc_x', alpha=0.5)
         plt.xlabel('Time Step')
         plt.ylabel('acc_x')
         plt.legend()
 
         plt.subplot(6, 1, 2)
-        plt.plot(time_steps, fake[:, i], 'r-', label='Generated acc_y', alpha=0.5)
-        plt.plot(time_steps, targ[:, i], 'b-', label='Ground Truth acc_y', alpha=0.5)
+        plt.plot(time_steps, fake[:, 2], 'r-', label='Generated acc_y', alpha=0.5)
+        plt.plot(time_steps, targ[:, 2], 'b-', label='Ground Truth acc_y', alpha=0.5)
         plt.xlabel('Time Step')
         plt.ylabel('acc_y')
         plt.legend()
 
         plt.subplot(6, 1, 3)
-        plt.plot(time_steps, fake[:, i], 'r-', label='Generated acc_z', alpha=0.5)
-        plt.plot(time_steps, targ[:, i], 'b-', label='Ground Truth acc_z', alpha=0.5)
+        plt.plot(time_steps, fake[:, 3], 'r-', label='Generated acc_z', alpha=0.5)
+        plt.plot(time_steps, targ[:, 3], 'b-', label='Ground Truth acc_z', alpha=0.5)
         plt.xlabel('Time Step')
         plt.ylabel('acc_z')
         plt.legend()
 
         plt.subplot(6, 1, 4)
-        plt.plot(time_steps, fake[:, i], 'r-', label='Generated gyro_x', alpha=0.5)
-        plt.plot(time_steps, targ[:, i], 'b-', label='Ground Truth gyro_x', alpha=0.5)
+        plt.plot(time_steps, fake[:, 4], 'r-', label='Generated gyro_x', alpha=0.5)
+        plt.plot(time_steps, targ[:, 4], 'b-', label='Ground Truth gyro_x', alpha=0.5)
         plt.xlabel('Time Step') 
         plt.ylabel('gyro_x')
         plt.legend()
 
         plt.subplot(6, 1, 5)
-        plt.plot(time_steps, fake[:, i], 'r-', label='Generated gyro_y', alpha=0.5)
-        plt.plot(time_steps, targ[:, i], 'b-', label='Ground Truth gyro_y', alpha=0.5)
+        plt.plot(time_steps, fake[:, 5], 'r-', label='Generated gyro_y', alpha=0.5)
+        plt.plot(time_steps, targ[:, 5], 'b-', label='Ground Truth gyro_y', alpha=0.5)
         plt.xlabel('Time Step')
         plt.ylabel('gyro_y')
         plt.legend()
         
         plt.subplot(6, 1, 6)
-        plt.plot(time_steps, fake[:, i], 'r-', label='Generated gyro_z', alpha=0.5)
-        plt.plot(time_steps, targ[:, i], 'b-', label='Ground Truth gyro_z', alpha=0.5)
+        plt.plot(time_steps, fake[:, 6], 'r-', label='Generated gyro_z', alpha=0.5)
+        plt.plot(time_steps, targ[:, 6], 'b-', label='Ground Truth gyro_z', alpha=0.5)
         plt.xlabel('Time Step')
         plt.ylabel('gyro_z')
         plt.legend()

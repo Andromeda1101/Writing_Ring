@@ -16,7 +16,8 @@ class GANConfig:
     seq_len = 100
     stride = 50
     imu_dim = 6           
-    vel_dim = 2           
+    vel_dim = 2  
+    vel_feat_dim = 84         
     noise_dim = 128      
     hidden_dim = 128
     dropout = 0.2      

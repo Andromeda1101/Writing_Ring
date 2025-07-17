@@ -9,7 +9,7 @@ class Generator(nn.Module):
         self.config = GANConfig()
         
         self.gru = nn.GRU(
-            input_size=self.config.noise_dim + self.config.vel_dim,
+            input_size=self.config.noise_dim + self.config.vel_feat_dim,
             hidden_size=512,
             num_layers=self.config.num_layers,
             batch_first=True,
@@ -33,11 +33,11 @@ class Generator(nn.Module):
         self.upsample = nn.Upsample(size=self.config.seq_len, mode='linear', align_corners=False)
         
     def forward(self, noise, conditions):
-        x = torch.cat((noise, conditions), dim=-1)  # [batch_size, seq_len, noise_dim + vel_dim]
-        _, h_n = self.gru(x)  # h_n: [num_layers, batch_size, 512]
-        x = h_n[-1]  # [batch_size, 512]
-        x = x.view(-1, 512, 1)  # [batch_size, 512, 1]
-        imu_fake = self.deconv(x)  # [batch_size, imu_dim, 16]
+        x = torch.cat((noise, conditions), dim=-1)  # [batch_size, noise_dim + vel_feat_dim]
+        gru_out, h_n = self.gru(x)  # output: [batch_size, 512], h_n: [num_layers, batch_size, 512]
+        h_n = h_n[-1]  # [batch_size, 512]
+        h_n = h_n.view(-1, 512, 1)  # [batch_size, 512, 1] 
+        imu_fake = self.deconv(gru_out)  # [batch_size, imu_dim, 16]
         imu_fake = self.upsample(imu_fake)  # [batch_size, imu_dim, seq_len]
         imu_fake = imu_fake.permute(0, 2, 1)  # [batch_size, seq_len, imu_dim]
         return imu_fake

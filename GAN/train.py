@@ -12,7 +12,7 @@ import torch.optim as optim
 from torch.utils.data import Subset
 import numpy as np
 import matplotlib.pyplot as plt
-from .utils import vae_loss_function
+from .utils import vae_loss_function, vel_feat
 from tqdm import tqdm
 import swanlab as wandb
 
@@ -31,12 +31,12 @@ def train_gan(generator, discriminator, dataloader, optimizer_G, optimizer_D, ad
         optimizer_D.zero_grad()
         # 真实样本的损失
         real_imu = real_imu.to(DEVICE)
-        real_vel = real_vel.to(DEVICE)
-        real_loss = adversarial_loss(discriminator(real_imu, real_vel), valid)
+        real_vel_feat = vel_feat(real_vel).to(DEVICE)
+        real_loss = adversarial_loss(discriminator(real_imu, real_vel_feat), valid)
         # 假样本
-        z = torch.randn((batch_size, GANConfig.seq_len, GANConfig.noise_dim), device=DEVICE)
-        fake_imu = generator(z, real_vel)
-        fake_loss = adversarial_loss(discriminator(fake_imu.detach(), real_vel), fake)
+        z = torch.randn(batch_size, GANConfig.noise_dim, device=DEVICE)
+        fake_imu = generator(z, real_vel_feat)
+        fake_loss = adversarial_loss(discriminator(fake_imu.detach(), real_vel_feat), fake)
         # 判别器损失
         d_loss = (real_loss + fake_loss) / 2
         d_loss.backward()
@@ -46,7 +46,7 @@ def train_gan(generator, discriminator, dataloader, optimizer_G, optimizer_D, ad
         #  训练生成器
         optimizer_G.zero_grad()
         # 生成器欺骗
-        validity = discriminator(fake_imu, real_vel)
+        validity = discriminator(fake_imu, real_vel_feat)
         g_loss = adversarial_loss(validity, valid)
         g_loss.backward()
         optimizer_G.step()
