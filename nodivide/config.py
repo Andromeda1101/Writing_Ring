@@ -21,7 +21,7 @@ DATA_LENGTH = 10000
 # 模型参数
 class MODEL_CONFIG:
     input_size = 6
-    hidden_size = 128
+    hidden_size = 256
     num_layers = 3
     output_size = 2
     length = DATA_LENGTH
@@ -38,7 +38,7 @@ class TRAIN_CONFIG:
     time_step = DATA_LENGTH
     stride = 5000
     warmup_steps = 10
-    rel_weight=0.3
+    rel_weight=0.4
     length_weight=0.4
     abs_weight=0.2
     dir_weight=0.4

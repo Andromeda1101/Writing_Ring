@@ -1,6 +1,6 @@
 # model.py
 import torch.nn as nn
-from .config import MODEL_CONFIG
+from .config import DEVICE, MODEL_CONFIG, MODEL_SAVE_PATH
 import torch
 
 class IMUToTrajectoryNet(nn.Module):
@@ -26,32 +26,30 @@ class IMUToTrajectoryNet(nn.Module):
         )
 
         # 卷积层模块
-        self.conv_block = nn.Sequential(
-            nn.Conv1d(
-                in_channels=self.config.hidden_size * 4, 
-                out_channels=self.config.hidden_size * 2,  
-                kernel_size=5,
-                padding=2,
-                padding_mode='replicate'
-            ),
-            nn.LeakyReLU(negative_slope=0.1),
-            nn.LayerNorm([self.config.hidden_size * 2, self.config.length]),
+        # self.conv_block = nn.Sequential(
+        #     nn.Conv1d(
+        #         in_channels=self.config.hidden_size * 4, 
+        #         out_channels=self.config.hidden_size * 2,  
+        #         kernel_size=5,
+        #         padding=2,
+        #         padding_mode='replicate'
+        #     ),
+        #     nn.LeakyReLU(negative_slope=0.1),
             
-            nn.Conv1d(
-                in_channels=self.config.hidden_size * 2,
-                out_channels=self.config.hidden_size * 2,
-                kernel_size=3,
-                padding=1,
-                padding_mode='replicate'
-            ),
-            nn.LeakyReLU(negative_slope=0.1),
-            nn.LayerNorm([self.config.hidden_size * 2, self.config.length])
-        )
+        #     nn.Conv1d(
+        #         in_channels=self.config.hidden_size * 2,
+        #         out_channels=self.config.hidden_size * 2,
+        #         kernel_size=3,
+        #         padding=1,
+        #         padding_mode='replicate'
+        #     ),
+        #     nn.LeakyReLU(negative_slope=0.1),
+        # )
         
         # 全连接层
         self.decoder = nn.Sequential(
             # nn.Linear(self.config["hidden_size"] * 6, 256),
-            nn.Linear(self.config.hidden_size * 6, self.config.hidden_size),
+            nn.Linear(self.config.hidden_size * 4, self.config.hidden_size),
             nn.LeakyReLU(negative_slope=0.1),
             nn.Dropout(self.config.dropout),
             nn.Linear(self.config.hidden_size, self.config.hidden_size // 2),
@@ -73,15 +71,15 @@ class IMUToTrajectoryNet(nn.Module):
             cat_features = torch.cat((output, weighted_output), dim=-1)
 
             # 卷积
-            conv_input = cat_features.transpose(1, 2)  # [B, hidden_size*4, seq_len]
-            conv_output = self.conv_block(conv_input)  # [B, hidden_size*2, seq_len]
-            conv_output = conv_output.transpose(1, 2)  # [B, seq_len, hidden_size*2]
-            # 残差连接
-            conv_features = torch.cat((cat_features, conv_output), dim=-1)  # [B, seq_len, hidden_size*6]
+            # conv_input = cat_features.transpose(1, 2)  # [B, hidden_size*4, seq_len]
+            # conv_output = self.conv_block(conv_input)  # [B, hidden_size*2, seq_len]
+            # conv_output = conv_output.transpose(1, 2)  # [B, seq_len, hidden_size*2]
+            # # 残差连接
+            # conv_features = torch.cat((cat_features, conv_output), dim=-1)  # [B, seq_len, hidden_size*6]
 
             # 全连接层
             # output = self.decoder(mixed_features)  # [B, seq_len, output_size]
-            output = self.decoder(conv_features)  # [B, seq_len, output_size]
+            output = self.decoder(cat_features)  # [B, seq_len, output_size]
             
             return output
             
@@ -89,3 +87,14 @@ class IMUToTrajectoryNet(nn.Module):
             print(f"Error in forward pass: {str(e)}")
             print(f"Input shape: {x.shape}")
             raise
+
+def load_model():
+    model = IMUToTrajectoryNet()
+    try:
+        model.load_state_dict(torch.load(MODEL_SAVE_PATH, map_location=DEVICE, weights_only=True))
+        print("Model loaded successfully.")
+    except FileNotFoundError:
+        print(f"Model file not found at {MODEL_SAVE_PATH}.")
+    except Exception as e:
+        print(f"Error loading model: {str(e)}")
+    return model

@@ -1,3 +1,4 @@
+import os
 import torch
 from nodivide.config import TRAIN_CONFIG
 
@@ -6,7 +7,7 @@ SEQ_LENGTH = TRAIN_CONFIG.time_step
 STRIDE = TRAIN_CONFIG.stride
 
 class GANConfig:
-    gan_dir = "gan"
+    gan_dir = "gan_d"
     plots_dir = "gan_plots"
     generator_path = "imu_generator.pth"
     discriminator_path = "imu_discriminator.pth"
@@ -17,11 +18,20 @@ class GANConfig:
     imu_dim = 6           
     vel_dim = 2           
     noise_dim = 128      
-    hidden_dim = 64      
+    hidden_dim = 128
+    dropout = 0.2      
     batch_size = 64     
-    lr = 0.0002          
+    lr = 0.0005         
     epochs = 500
-    sample_interval = 500
+    plot_freq = 10
+    num_layers = 2
+
+    def get_generator_path(self):
+        return os.path.join(self.gan_dir, self.generator_path)
+    def get_discriminator_path(self):
+        return os.path.join(self.gan_dir, self.discriminator_path)
+    def get_plots_dir(self):
+        return os.path.join(self.gan_dir, self.plots_dir)
 
 
 class VAEConfig:

@@ -11,9 +11,9 @@ class Generator(nn.Module):
         self.gru = nn.GRU(
             input_size=self.config.noise_dim + self.config.vel_dim,
             hidden_size=512,
-            num_layers=self.config.num_layers,
+            num_layers=2,
             batch_first=True,
-            dropout=self.config.dropout
+            dropout=0.2
         )
         
         self.deconv = nn.Sequential(
@@ -93,76 +93,98 @@ class Discriminator(nn.Module):
         validity = self.fc(combined)  # [batch_size, 1]
         return validity
 
-# VAE 
+class UNetBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=4, stride=2, padding=1):
+        super(UNetBlock, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding),
+            nn.BatchNorm1d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        return self.conv(x)
+
+class UNetUpBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=4, stride=2, padding=1):
+        super(UNetUpBlock, self).__init__()
+        self.upconv = nn.Sequential(
+            nn.ConvTranspose1d(in_channels, out_channels, kernel_size, stride, padding),
+            nn.BatchNorm1d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x, skip):
+        out = self.upconv(x)
+        out = torch.cat([out, skip], dim=1)
+        return out
+
 class VAE(nn.Module):
     def __init__(self, config):
         super(VAE, self).__init__()
         self.config = config
         
-        # 编码器
-        self.encoder_gru = nn.GRU(
-            input_size=self.config.input_dim, 
-            hidden_size=self.config.hidden_dim, 
-            num_layers=self.config.num_layers, 
-            dropout=self.config.dropout,
-            batch_first=True
-        )
+        # Encoder (U-Net下采样路径)
+        self.enc1 = UNetBlock(self.config.input_dim, 64)
+        self.enc2 = UNetBlock(64, 128)
+        self.enc3 = UNetBlock(128, 256)
+        self.enc4 = UNetBlock(256, 512)
         
-        self.fc_mu = nn.Sequential(
-            nn.Linear(self.config.hidden_dim, self.config.hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(self.config.dropout),
-            nn.Linear(self.config.hidden_dim, self.config.latent_dim)
-        )
-        self.fc_logvar = nn.Sequential(
-            nn.Linear(self.config.hidden_dim, self.config.hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(self.config.dropout),
-            nn.Linear(self.config.hidden_dim, self.config.latent_dim)
-        )
+        # Latent space
+        self.fc_mu = nn.Linear(512 * (self.config.seq_len // 16), self.config.latent_dim)
+        self.fc_logvar = nn.Linear(512 * (self.config.seq_len // 16), self.config.latent_dim)
         
-        # 解码器
-        self.decoder_pre = nn.Sequential(
-            nn.Linear(self.config.latent_dim, self.config.hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(self.config.dropout),
-            nn.Linear(self.config.hidden_dim, self.config.input_dim)
-        )
-
-        self.decoder_gru = nn.GRU(
-            input_size=self.config.latent_dim, 
-            hidden_size=self.config.hidden_dim, 
-            num_layers=self.config.num_layers, 
-            dropout=self.config.dropout,
-            batch_first=True
-        )
+        # Decoder (U-Net上采样路径)
+        latent_seq_len = self.config.seq_len // 16
+        self.latent_fc = nn.Linear(self.config.latent_dim, 512 * latent_seq_len)
         
-        self.decoder_fc = nn.Sequential(
-            nn.Linear(self.config.hidden_dim, self.config.hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(self.config.dropout),
-            nn.Linear(self.config.hidden_dim, self.config.input_dim)
-        )
+        self.dec4 = UNetUpBlock(512, 256)
+        self.dec3 = UNetUpBlock(512, 128)
+        self.dec2 = UNetUpBlock(256, 64)
+        self.dec1 = UNetUpBlock(128, 32)
+        
+        self.final_conv = nn.Conv1d(64, self.config.input_dim, 1)
         
     def encode(self, x):
-        _, h = self.encoder_gru(x)  # h: [num_layers, batch_size, hidden_dim]
-        h = h[-1]  # [batch_size, hidden_dim]
-        mu = self.fc_mu(h)  # [batch_size, latent_dim]
-        logvar = self.fc_logvar(h)  # [batch_size, latent_dim]
-        return mu, logvar
+        # Convert [batch, seq_len, channels] to [batch, channels, seq_len]
+        x = x.permute(0, 2, 1)
+        
+        # Encoder path with skip connections
+        e1 = self.enc1(x)
+        e2 = self.enc2(e1)
+        e3 = self.enc3(e2)
+        e4 = self.enc4(e3)
+        
+        # Flatten and project to latent space
+        flat = e4.view(e4.size(0), -1)
+        mu = self.fc_mu(flat)
+        logvar = self.fc_logvar(flat)
+        
+        return mu, logvar, (e1, e2, e3, e4)
     
-    def decode(self, z):
-        batch_size = z.size(0)  # z: [batch_size, latent_dim]
-        z = z.unsqueeze(1)  # [batch_size, 1, latent_dim]
-        z = z.expand(-1, self.config.seq_len, -1)  # [batch_size, seq_len, latent_dim]
-        output, _ = self.decoder_gru(z)  # output: [batch_size, seq_len, hidden_dim]
-        recon = self.decoder_fc(output)  # [batch_size, seq_len, input_dim]
-        return recon
+    def decode(self, z, skip_connections):
+        e1, e2, e3, e4 = skip_connections
+        
+        # Reshape latent vector
+        z = self.latent_fc(z)
+        z = z.view(z.size(0), 512, -1)
+        
+        # Decoder path using skip connections
+        d4 = self.dec4(z, e4)
+        d3 = self.dec3(d4, e3)
+        d2 = self.dec2(d3, e2)
+        d1 = self.dec1(d2, e1)
+        
+        out = self.final_conv(d1)
+        # Convert back to [batch, seq_len, channels]
+        out = out.permute(0, 2, 1)
+        
+        return out
     
     def forward(self, x):
-        mu, logvar = self.encode(x)
+        mu, logvar, skip_connections = self.encode(x)
         z = self.reparameterize(mu, logvar)
-        recon_x = self.decode(z)
+        recon_x = self.decode(z, skip_connections)
         return recon_x, mu, logvar
     
     def reparameterize(self, mu, logvar):

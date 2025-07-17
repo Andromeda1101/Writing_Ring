@@ -16,3 +16,4 @@ swanlog/
 generate_samples/
 *pict/
 *vae/
+gan_*/

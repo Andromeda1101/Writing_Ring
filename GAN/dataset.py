@@ -9,7 +9,7 @@ from nodivide.dataset import IMUTrajectoryDataset
 class GANDataset(Dataset):
     def __init__(self):
         self.config = GANConfig()
-        self.seq_length = self.config.seq_length
+        self.seq_length = self.config.seq_len
         self.dataset = IMUTrajectoryDataset()
         self.imu_data = []
         self.vel_data = []
@@ -27,7 +27,7 @@ class GANDataset(Dataset):
                 window_x = x[start:end]
                 window_y = y[start:end]
                 window_m = m[start:end]
-                if window_m.sum() <= self.seq_length * 0.2: continue
+                if window_m.sum().item() <= self.seq_length * 0.5: continue
                 if idx in self.dataset.train_indices:
                     self.train_indices.append(len(self.imu_data))
                 elif idx in self.dataset.val_indices:
@@ -40,10 +40,11 @@ class GANDataset(Dataset):
                 self.imu_data.append(window_x)
                 self.vel_data.append(window_y)
                 self.masks.append(window_m)
-        
-        
+
+        self.samples_length = len(self.imu_data)
+         
     def __len__(self):
-        return len(self.data)
+        return self.samples_length
     
     def __getitem__(self, idx):
         return self.imu_data[idx], self.vel_data[idx], self.masks[idx]

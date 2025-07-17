@@ -2,23 +2,26 @@ import os
 import random
 import torch
 import torch.nn as nn
+from GAN.validate import gan_validate, vae_validate
 from nodivide.utils import class_to_dict
 from .model import Generator, Discriminator, VAE
-from .config import DEVICE, GANConfig, SAMPLES_PATH, GENERATOR_PATH, DISCRIMINATOR_PATH, VAEConfig
+from .config import DEVICE, GANConfig, VAEConfig
 from .dataset import GANDataset, VAEDataset
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 import torch.optim as optim
 from torch.utils.data import Subset
 import numpy as np
 import matplotlib.pyplot as plt
-from .utils import vae_loss_function, draw_vae_samples, vae_validate
+from .utils import vae_loss_function
 from tqdm import tqdm
 import swanlab as wandb
 
 def train_gan(generator, discriminator, dataloader, optimizer_G, optimizer_D, adversarial_loss):
+    generator.train()
+    discriminator.train()
     total_g_loss = 0.0
     total_d_loss = 0.0
-    for batch_idx, (real_imu, real_vel) in enumerate(dataloader):
+    for batch_idx, (real_imu, real_vel, masks) in tqdm(enumerate(dataloader)):
         batch_size = real_imu.size(0)
         
         valid = torch.ones((batch_size, 1), device=DEVICE)
@@ -31,14 +34,14 @@ def train_gan(generator, discriminator, dataloader, optimizer_G, optimizer_D, ad
         real_vel = real_vel.to(DEVICE)
         real_loss = adversarial_loss(discriminator(real_imu, real_vel), valid)
         # 假样本
-        z = torch.randn(batch_size, GANConfig.noise_dim, device=DEVICE)
+        z = torch.randn((batch_size, GANConfig.seq_len, GANConfig.noise_dim), device=DEVICE)
         fake_imu = generator(z, real_vel)
         fake_loss = adversarial_loss(discriminator(fake_imu.detach(), real_vel), fake)
         # 判别器损失
         d_loss = (real_loss + fake_loss) / 2
         d_loss.backward()
         optimizer_D.step()
-        total_d_loss += d_loss
+        total_d_loss += d_loss.item()
         
         #  训练生成器
         optimizer_G.zero_grad()
@@ -47,7 +50,7 @@ def train_gan(generator, discriminator, dataloader, optimizer_G, optimizer_D, ad
         g_loss = adversarial_loss(validity, valid)
         g_loss.backward()
         optimizer_G.step()
-        total_g_loss += g_loss
+        total_g_loss += g_loss.item()
     
     avg_g_loss = total_g_loss / len(dataloader)
     avg_d_loss = total_d_loss / len(dataloader)
@@ -57,9 +60,8 @@ def train_gan(generator, discriminator, dataloader, optimizer_G, optimizer_D, ad
 def train_gan_model():
     torch.manual_seed(42)
     np.random.seed(42)
-
     config = GANConfig()
-
+    wandb.init(project="ring-gan", config={**class_to_dict(config)})
     generator = Generator().to(DEVICE)
     discriminator = Discriminator().to(DEVICE)
 
@@ -67,36 +69,53 @@ def train_gan_model():
     adversarial_loss = nn.BCELoss()
     optimizer_G = optim.Adam(generator.parameters(), lr=config.lr)
     optimizer_D = optim.Adam(discriminator.parameters(), lr=config.lr)
+    print(f'\nLoading data')
     dataset = GANDataset()
-    dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+    train_set = Subset(dataset, dataset.train_indices)
+    val_set = Subset(dataset, dataset.val_indices)
+    test_set = Subset(dataset, dataset.test_indices)
+    train_dataloader = DataLoader(
+        train_set, 
+        batch_size=config.batch_size, 
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True
+    )
+    val_dataloader = DataLoader(
+        val_set,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True
+    )
+    test_dataloader = DataLoader(
+        test_set,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True
+    )
+    print(f'Training samples: {len(train_set)}')
+    print(f'Validation samples: {len(val_set)}')
+    print(f'Testing samples: {len(test_set)}')
 
     for epoch in range(config.epochs):
-        g_loss, d_loss = train_gan(generator, discriminator, dataloader, optimizer_G, optimizer_D, adversarial_loss)
-            
-        print(f"[Epoch {epoch}/{config.epochs}] [D loss: {d_loss.item():.4f}] [G loss: {g_loss.item():.4f}]")
         
-        if epoch % config.sample_interval == 0:
-            z = torch.randn(5, config.noise_dim, device=DEVICE)
-            sample_vel = torch.randn(5, config.vel_dim, device=DEVICE)
-            gen_samples = generator(z, sample_vel).detach().cpu().numpy()
-            
-            fig, axes = plt.subplots(3, 2, figsize=(15, 10))
-            axes = axes.flatten()
-            for j in range(6):  # 6个IMU通道
-                ax = axes[j]
-                for k in range(5):  # 5个样本
-                    ax.plot(gen_samples[k, j], alpha=0.7)
-                ax.set_title(f'IMU Channel {j+1}')
-                ax.grid(True)
-            plt.suptitle(f'Epoch {epoch} - Generated IMU Samples')
-            plt.tight_layout()
-            path = os.path.join(SAMPLES_PATH, f"generated_samples_epoch_{epoch}.png")
-            plt.savefig(path)
-            plt.close()
+        g_loss, d_loss = train_gan(generator, discriminator, train_dataloader, optimizer_G, optimizer_D, adversarial_loss)
+        val_g_loss, val_d_loss = gan_validate(generator, discriminator, val_dataloader, loss_fn=adversarial_loss, epoch=epoch)
+        print(f"[Epoch {epoch}/{config.epochs}] [D loss: {d_loss:.4f}] [G loss: {g_loss:.4f}] [Val D loss: {val_d_loss:.4f}] [Val G loss: {val_g_loss:.4f}]")
+        wandb.log({
+            "epoch": epoch,
+            "generator_loss": g_loss,
+            "discriminator_loss": d_loss,
+            "val_generator_loss": val_g_loss,
+            "val_discriminator_loss": val_d_loss
+        })
 
     # 保存模型
-    torch.save(generator.state_dict(), GENERATOR_PATH)
-    torch.save(discriminator.state_dict(), DISCRIMINATOR_PATH)
+    torch.save(generator.state_dict(), GANConfig.get_generator_path(GANConfig))
+    torch.save(discriminator.state_dict(), GANConfig.get_discriminator_path(GANConfig))
+    wandb.finish()
 
 def train_vae_model(config=VAEConfig):
     random.seed(42)

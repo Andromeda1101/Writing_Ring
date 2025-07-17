@@ -121,7 +121,7 @@ def traject_loss(outputs, targets, valid_num, rel_weight=TRAIN_CONFIG.rel_weight
     # 路径长度损失
     pred_length = torch.norm(rel_outputs_traj, dim=-1).sum(dim=1)
     targ_length = torch.norm(rel_targets_traj, dim=-1).sum(dim=1)
-    length_loss = F.mse_loss(pred_length, targ_length)
+    length_loss = F.mse_loss(pred_length, targ_length, reduction='sum') / (valid_num + 1e-8)
 
     # 方向损失
     pred_dir = F.normalize(rel_outputs_traj, dim=-1)

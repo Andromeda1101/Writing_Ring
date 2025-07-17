@@ -1,11 +1,9 @@
 # dataset.py
 import os
 import numpy as np
-from sklearn.model_selection import TimeSeriesSplit
 import torch
-import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
-from .utils import rotation_perturb, smooth_data
+from .utils import smooth_data
 from .config import DATA_DIR, SAVED_DATA_PATH, TRAIN_CONFIG
 from tqdm import tqdm
 import random
@@ -149,4 +147,8 @@ class IMUTrajectoryDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.x[idx], self.y[idx], self.m[idx], self.sample_idx[idx], self.window_idx[idx]
+    
+def get_mean_and_std():
+    dataset = IMUTrajectoryDataset()
+    return dataset.x_mean, dataset.x_std
 
